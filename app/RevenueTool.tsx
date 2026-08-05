@@ -212,6 +212,29 @@ function displayDateFrom(rawDate: string) {
   return rawDate;
 }
 
+const formatAmount = (value: number) => value === 0
+  ? ""
+  : new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+
+function calculateTotals(stores: Store[]) {
+  const totals = emptyMetrics();
+  stores.forEach((store) => metricKeys.forEach((key) => { totals[key] += store.metrics[key]; }));
+  return totals;
+}
+
+function getColumnTexts(stores: Store[], totals: Metrics) {
+  return [
+    ["选择区", ...stores.map((store) => store.region)],
+    ["门店", "合计", ...stores.map((store) => store.storeName)],
+    ["营业额", formatAmount(calcTotal(totals)), ...stores.map((store) => formatAmount(store.total))],
+    ...metricKeys.map((key) => [key, formatAmount(totals[key]), ...stores.map((store) => formatAmount(store.metrics[key]))]),
+  ];
+}
+
+function excelTextUnits(text: string) {
+  return Array.from(text).reduce((sum, character) => sum + (/[^\x00-\xff]/.test(character) ? 2 : 1), 0);
+}
+
 async function createOutput(stores: Store[], displayDate: string, filename: string) {
   const ExcelJS = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
@@ -294,8 +317,12 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     currentRow += 1;
   });
 
-  [8, 26, 11, 10, 11, 9, 10, 10, 10, 13, 13, 13, 11, 10].forEach((width, index) => {
-    sheet.getColumn(index + 1).width = width;
+  const totals = calculateTotals(stores);
+  const columnTexts = getColumnTexts(stores, totals);
+  const minimumWidths = [8, 12, 12, 10, 12, 10, 12, 12, 12, 12, 12, 10, 12, 10];
+  columnTexts.forEach((texts, index) => {
+    const contentWidth = Math.max(...texts.map(excelTextUnits)) + 2;
+    sheet.getColumn(index + 1).width = Math.max(minimumWidths[index], contentWidth);
   });
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -310,10 +337,6 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-const formatAmount = (value: number) => value === 0
-  ? ""
-  : new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
-
 async function createHighResImage(stores: Store[], displayDate: string) {
   const grouped = new Map<string, Store[]>();
   stores.forEach((store) => grouped.set(store.region, [...(grouped.get(store.region) ?? []), store]));
@@ -322,7 +345,6 @@ async function createHighResImage(stores: Store[], displayDate: string) {
 
   // 参考成品为 1992 × 4822、192 DPI。12pt 文字按 2 倍像素绘制，
   // 避免把普通 16px 文本直接放进大画布所造成的放大模糊。
-  const canvasWidth = 1992;
   const canvasHeight = 4822;
   const margin = 15;
   const grid = 4;
@@ -333,31 +355,33 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   const fixedHeight = margin * 2 + titleHeight + headerHeight + totalHeight + noteHeight * 2 + grid * 4;
   const rowSlot = Math.max(30, Math.floor((canvasHeight - fixedHeight) / Math.max(stores.length, 1)));
   const rowHeight = rowSlot - grid;
+  const fontFamily = '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif';
+  const totals = calculateTotals(stores);
+  const columnTexts = getColumnTexts(stores, totals);
+  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
   const canvas = document.createElement("canvas");
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法生成图片");
 
+  // 使用最终绘图字体测量每列的最长内容，标题、金额和门店名都不会再被截断。
+  context.font = `700 32px ${fontFamily}`;
+  const widths = columnTexts.map((texts, index) => {
+    const measured = Math.max(...texts.map((text) => context.measureText(text).width));
+    return Math.max(minimumWidths[index], Math.ceil((measured + 24) / 2) * 2);
+  });
+  const canvasWidth = margin * 2 + widths.reduce((sum, width) => sum + width, 0) + grid * (widths.length - 1);
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
   context.imageSmoothingEnabled = false;
   context.fillStyle = "#FFFFFF";
   context.fillRect(0, 0, canvasWidth, canvasHeight);
-  // 精确复刻参考图列宽；列间保留 4px 白色网格，不使用半像素描边。
-  const widths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
+
   const starts: number[] = [];
   widths.reduce((x, width) => {
     starts.push(x);
     return x + width + grid;
   }, margin);
   const headers = ["选择区", "门店", "营业额", ...metricKeys];
-  const fontFamily = '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif';
-
-  const fitText = (text: string, maxWidth: number) => {
-    if (context.measureText(text).width <= maxWidth) return text;
-    let result = text;
-    while (result.length > 1 && context.measureText(`${result}…`).width > maxWidth) result = result.slice(0, -1);
-    return `${result}…`;
-  };
 
   const drawCell = (
     column: number,
@@ -375,8 +399,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     context.textBaseline = "middle";
     context.textAlign = options.align ?? "center";
     const padding = 10;
-    const fitted = fitText(text, width - padding * 2);
-    context.fillText(fitted, options.align === "left" ? x + padding : Math.round(x + width / 2), Math.round(y + height / 2));
+    context.fillText(text, options.align === "left" ? x + padding : Math.round(x + width / 2), Math.round(y + height / 2));
   };
 
   let y = margin;
@@ -405,8 +428,6 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     drawCell(0, regionY, Math.max(rowHeight, items.length * rowSlot - grid), region, { fill: baseFill, bold: true });
   });
 
-  const totals = emptyMetrics();
-  stores.forEach((store) => metricKeys.forEach((key) => { totals[key] += store.metrics[key]; }));
   drawCell(0, y, totalHeight, "", { fill: "#FFFF00", bold: true });
   drawCell(1, y, totalHeight, "合计", { fill: "#FFFF00", bold: true });
   drawCell(2, y, totalHeight, formatAmount(calcTotal(totals)), { fill: "#FFFF00", bold: true });
@@ -430,7 +451,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => result ? resolve(result) : reject(new Error("高清图片生成失败")), "image/png", 1);
   });
-  return blob;
+  return { blob, width: canvasWidth, height: canvasHeight };
 }
 
 function FilePicker({ label, file, onChange }: { label: string; file: File | null; onChange: (file: File | null) => void }) {
@@ -456,7 +477,7 @@ export function RevenueTool() {
   const [outputMode, setOutputMode] = useState<OutputMode>("excel");
   const [working, setWorking] = useState(false);
   const [completed, setCompleted] = useState<{ stores: number; regions: number } | null>(null);
-  const [imageResult, setImageResult] = useState<{ url: string; filename: string } | null>(null);
+  const [imageResult, setImageResult] = useState<{ url: string; filename: string; width: number; height: number } | null>(null);
   const ready = useMemo(() => Boolean(dingdingFile && dailyFile && !working), [dingdingFile, dailyFile, working]);
 
   const run = async () => {
@@ -490,8 +511,13 @@ export function RevenueTool() {
         addLog("      Excel 统计表已下载");
       }
       if (outputMode === "image" || outputMode === "both") {
-        const imageBlob = await createHighResImage(merged, displayDate);
-        setImageResult({ url: URL.createObjectURL(imageBlob), filename: `${safeDate} 营业额统计高清图.png` });
+        const image = await createHighResImage(merged, displayDate);
+        setImageResult({
+          url: URL.createObjectURL(image.blob),
+          filename: `${safeDate} 营业额统计高清图.png`,
+          width: image.width,
+          height: image.height,
+        });
         addLog("      高清长图已生成，请点击保存图片");
       }
       const regionCount = new Set(merged.map((store) => store.region)).size;
@@ -555,7 +581,7 @@ export function RevenueTool() {
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>1992 × 4822 · 192 DPI 级 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 列宽自适应 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
             <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
