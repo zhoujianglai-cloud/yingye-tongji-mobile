@@ -343,31 +343,34 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   grouped.forEach((items) => items.sort((a, b) => b.total - a.total));
   const regions = [...regionOrder.filter((region) => grouped.has(region)), ...[...grouped.keys()].filter((region) => !regionOrder.includes(region))];
 
-  // 参考成品为 1992 × 4822、192 DPI。12pt 文字按 2 倍像素绘制，
-  // 避免把普通 16px 文本直接放进大画布所造成的放大模糊。
-  const canvasHeight = 4822;
-  const margin = 15;
-  const grid = 4;
-  const titleHeight = 56;
-  const headerHeight = 46;
-  const totalHeight = 46;
-  const noteHeight = 46;
+  // 12pt 正文按 1.5 倍像素绘制，在清晰度和手机文件大小之间取得平衡。
+  const renderScale = 1.5;
+  const bodyFontPx = Math.round(16 * renderScale);
+  const titleFontPx = Math.round(21 * renderScale);
+  const canvasHeight = Math.round(2412 * renderScale);
+  const margin = Math.round(7.5 * renderScale);
+  const grid = Math.round(2 * renderScale);
+  const titleHeight = Math.round(28 * renderScale);
+  const headerHeight = Math.round(23 * renderScale);
+  const totalHeight = Math.round(23 * renderScale);
+  const noteHeight = Math.round(23 * renderScale);
   const fixedHeight = margin * 2 + titleHeight + headerHeight + totalHeight + noteHeight * 2 + grid * 4;
-  const rowSlot = Math.max(30, Math.floor((canvasHeight - fixedHeight) / Math.max(stores.length, 1)));
+  const rowSlot = Math.max(Math.round(15 * renderScale), Math.floor((canvasHeight - fixedHeight) / Math.max(stores.length, 1)));
   const rowHeight = rowSlot - grid;
   const fontFamily = '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif';
   const totals = calculateTotals(stores);
   const columnTexts = getColumnTexts(stores, totals);
-  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
+  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112]
+    .map((width) => Math.round((width / 2) * renderScale));
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法生成图片");
 
   // 使用最终绘图字体测量每列的最长内容，标题、金额和门店名都不会再被截断。
-  context.font = `700 32px ${fontFamily}`;
+  context.font = `700 ${bodyFontPx}px ${fontFamily}`;
   const widths = columnTexts.map((texts, index) => {
     const measured = Math.max(...texts.map((text) => context.measureText(text).width));
-    return Math.max(minimumWidths[index], Math.ceil((measured + 24) / 2) * 2);
+    return Math.max(minimumWidths[index], Math.ceil((measured + Math.round(12 * renderScale)) / 2) * 2);
   });
   const canvasWidth = margin * 2 + widths.reduce((sum, width) => sum + width, 0) + grid * (widths.length - 1);
   canvas.width = canvasWidth;
@@ -395,10 +398,10 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     context.fillStyle = options.fill;
     context.fillRect(x, y, width, height);
     context.fillStyle = options.color ?? "#000000";
-    context.font = `${options.bold ? "700" : "400"} ${options.fontPx ?? 32}px ${fontFamily}`;
+    context.font = `${options.bold ? "700" : "400"} ${options.fontPx ?? bodyFontPx}px ${fontFamily}`;
     context.textBaseline = "middle";
     context.textAlign = options.align ?? "center";
-    const padding = 10;
+    const padding = Math.round(5 * renderScale);
     context.fillText(text, options.align === "left" ? x + padding : Math.round(x + width / 2), Math.round(y + height / 2));
   };
 
@@ -406,7 +409,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   context.fillStyle = "#FFFF00";
   context.fillRect(margin, y, canvasWidth - margin * 2, titleHeight);
   context.fillStyle = "#000000";
-  context.font = `700 42px ${fontFamily}`;
+  context.font = `700 ${titleFontPx}px ${fontFamily}`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(`${displayDate}营业额统计`, canvasWidth / 2, y + titleHeight / 2);
@@ -441,7 +444,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     context.fillStyle = "#FFFF00";
     context.fillRect(margin, y, canvasWidth - margin * 2, noteHeight);
     context.fillStyle = "#000000";
-    context.font = `700 32px ${fontFamily}`;
+    context.font = `700 ${bodyFontPx}px ${fontFamily}`;
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(note, canvasWidth / 2, y + noteHeight / 2);
@@ -581,7 +584,7 @@ export function RevenueTool() {
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 列宽自适应 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 1.5倍高清 · 列宽自适应 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
             <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
