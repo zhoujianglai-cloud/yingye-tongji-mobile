@@ -79,6 +79,18 @@ main {
 .date-field input { width: 100%; height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 13px; outline: none; color: var(--ink); background: white; font-size: 14px; }
 .date-field input:focus { border-color: #77a9ff; box-shadow: 0 0 0 3px rgba(77, 141, 255, .12); }
 
+.output-field { min-width: 0; margin: 16px 0 0; padding: 0; border: 0; }
+.output-field legend { margin-bottom: 8px; padding: 0; font-size: 13px; font-weight: 750; }
+.output-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.output-options label { position: relative; display: flex; align-items: center; min-width: 0; gap: 8px; padding: 11px 10px; border: 1px solid var(--line); border-radius: 13px; background: #fff; cursor: pointer; transition: .18s ease; }
+.output-options label.selected { border-color: #76a7ff; background: #f2f7ff; box-shadow: 0 0 0 2px rgba(77, 141, 255, .1); }
+.output-options input { position: absolute; opacity: 0; pointer-events: none; }
+.output-options span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.output-options strong { font-size: 12px; white-space: nowrap; }
+.output-options small { color: var(--muted); font-size: 9px; white-space: nowrap; }
+.output-options i { flex: 0 0 auto; width: 14px; height: 14px; margin-left: auto; border: 1.5px solid #b8c4d7; border-radius: 50%; }
+.output-options .selected i { border: 4px solid var(--blue); }
+
 .generate-button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 50px; margin-top: 18px; border: 0; border-radius: 15px; color: white; background: linear-gradient(135deg, #4d8dff, #687eff); box-shadow: 0 12px 24px rgba(64, 123, 229, .28); font-size: 16px; font-weight: 800; cursor: pointer; }
 .generate-button:disabled { color: #a6b3c8; background: #e8edf5; box-shadow: none; cursor: not-allowed; }
 .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.38); border-top-color: white; border-radius: 50%; animation: spin .8s linear infinite; }
@@ -89,6 +101,17 @@ main {
 .success-banner div { display: flex; flex-direction: column; gap: 2px; }
 .success-banner strong { color: #237455; font-size: 13px; }
 .success-banner small { color: #5d8e79; font-size: 11px; }
+
+.image-result { margin-top: 16px; padding: 13px; border: 1px solid #dbe6f5; border-radius: 17px; background: #f8fbff; }
+.image-result-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.image-result-heading div { display: flex; flex-direction: column; gap: 2px; }
+.image-result-heading strong { font-size: 13px; }
+.image-result-heading small { color: var(--muted); font-size: 10px; }
+.image-result-heading > span { padding: 4px 8px; border-radius: 999px; color: #297858; background: #e3f8ee; font-size: 10px; font-weight: 750; }
+.image-preview { max-height: 280px; overflow: auto; border: 1px solid #d7e0ed; border-radius: 10px; background: white; -webkit-overflow-scrolling: touch; }
+.image-preview img { display: block; width: 100%; height: auto; }
+.save-image-button { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 11px; border-radius: 12px; color: white; background: linear-gradient(135deg, #3a80f5, #657cff); text-decoration: none; font-size: 14px; font-weight: 800; }
+.image-result > p { margin: 8px 2px 0; color: var(--muted); font-size: 10px; line-height: 1.5; text-align: center; }
 
 .log-box { margin-top: 16px; border: 1px solid #e1e8f2; border-radius: 15px; overflow: hidden; background: #f6f8fc; }
 .log-title { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid #e1e8f2; color: #59677e; font-size: 12px; font-weight: 750; }
@@ -112,6 +135,10 @@ footer { padding: 12px 0 6px; text-align: center; color: #8390a6; font-size: 11p
   .tool-panel { padding: 18px 14px; border-radius: 23px; }
   .file-grid { grid-template-columns: 1fr; }
   .file-card { padding: 13px; }
+  .output-options { gap: 5px; }
+  .output-options label { padding: 10px 7px; }
+  .output-options strong { font-size: 11px; }
+  .output-options small { font-size: 8px; }
   .flow { gap: 5px; }
   .flow div { padding: 11px 8px; }
   .flow i { font-size: 12px; }
