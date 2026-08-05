@@ -320,32 +320,34 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   grouped.forEach((items) => items.sort((a, b) => b.total - a.total));
   const regions = [...regionOrder.filter((region) => grouped.has(region)), ...[...grouped.keys()].filter((region) => !regionOrder.includes(region))];
 
-  // 按用户提供的参考图片输出固定高清画布。12pt 在 Canvas 中约等于 16px。
-  const canvasWidth = 1546;
-  const canvasHeight = 4570;
-  const margin = 0;
-  const titleHeight = 52;
-  const headerHeight = 40;
-  const totalHeight = 40;
-  const noteHeight = 38;
-  const footerHeight = 30;
-  const availableRowsHeight = canvasHeight - titleHeight - headerHeight - totalHeight - noteHeight * 2 - footerHeight;
-  const rowHeight = Math.max(20, Math.min(34, Math.floor(availableRowsHeight / Math.max(stores.length, 1))));
+  // 参考成品为 1992 × 4822、192 DPI。12pt 文字按 2 倍像素绘制，
+  // 避免把普通 16px 文本直接放进大画布所造成的放大模糊。
+  const canvasWidth = 1992;
+  const canvasHeight = 4822;
+  const margin = 15;
+  const grid = 4;
+  const titleHeight = 56;
+  const headerHeight = 46;
+  const totalHeight = 46;
+  const noteHeight = 46;
+  const fixedHeight = margin * 2 + titleHeight + headerHeight + totalHeight + noteHeight * 2 + grid * 4;
+  const rowSlot = Math.max(30, Math.floor((canvasHeight - fixedHeight) / Math.max(stores.length, 1)));
+  const rowHeight = rowSlot - grid;
   const canvas = document.createElement("canvas");
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法生成图片");
 
+  context.imageSmoothingEnabled = false;
   context.fillStyle = "#FFFFFF";
   context.fillRect(0, 0, canvasWidth, canvasHeight);
-  const baseWidths = [70, 250, 100, 85, 95, 85, 100, 90, 100, 110, 110, 110, 100, 91];
-  const widthScale = (canvasWidth - margin * 2) / baseWidths.reduce((sum, width) => sum + width, 0);
-  const widths = baseWidths.map((width) => width * widthScale);
+  // 精确复刻参考图列宽；列间保留 4px 白色网格，不使用半像素描边。
+  const widths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
   const starts: number[] = [];
   widths.reduce((x, width) => {
     starts.push(x);
-    return x + width;
+    return x + width + grid;
   }, margin);
   const headers = ["选择区", "门店", "营业额", ...metricKeys];
   const fontFamily = '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif';
@@ -362,82 +364,68 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     y: number,
     height: number,
     text: string,
-    options: { fill: string; bold?: boolean; align?: "left" | "center"; fontPt?: number; color?: string },
+    options: { fill: string; bold?: boolean; align?: "left" | "center"; fontPx?: number; color?: string },
   ) => {
     const x = starts[column];
     const width = widths[column];
     context.fillStyle = options.fill;
     context.fillRect(x, y, width, height);
-    context.strokeStyle = "#FFFFFF";
-    context.lineWidth = 2;
-    context.strokeRect(x, y, width, height);
-    context.fillStyle = options.color ?? "#111827";
-    context.font = `${options.bold ? "700" : "400"} ${options.fontPt ?? 12}pt ${fontFamily}`;
+    context.fillStyle = options.color ?? "#000000";
+    context.font = `${options.bold ? "700" : "400"} ${options.fontPx ?? 32}px ${fontFamily}`;
     context.textBaseline = "middle";
     context.textAlign = options.align ?? "center";
-    const padding = 7;
+    const padding = 10;
     const fitted = fitText(text, width - padding * 2);
-    context.fillText(fitted, options.align === "left" ? x + padding : x + width / 2, y + height / 2 + 1);
+    context.fillText(fitted, options.align === "left" ? x + padding : Math.round(x + width / 2), Math.round(y + height / 2));
   };
 
   let y = margin;
   context.fillStyle = "#FFFF00";
   context.fillRect(margin, y, canvasWidth - margin * 2, titleHeight);
-  context.strokeStyle = "#FFFFFF";
-  context.lineWidth = 2;
-  context.strokeRect(margin, y, canvasWidth - margin * 2, titleHeight);
-  context.fillStyle = "#0F172A";
-  context.font = `700 16pt ${fontFamily}`;
+  context.fillStyle = "#000000";
+  context.font = `700 42px ${fontFamily}`;
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(`${displayDate}营业额统计`, canvasWidth / 2, y + titleHeight / 2);
-  y += titleHeight;
+  y += titleHeight + grid;
 
-  headers.forEach((header, column) => drawCell(column, y, headerHeight, header, { fill: "#FFFF00", bold: true, fontPt: 12 }));
-  y += headerHeight;
+  headers.forEach((header, column) => drawCell(column, y, headerHeight, header, { fill: "#FFFF00", bold: true }));
+  y += headerHeight + grid;
 
   regions.forEach((region, regionIndex) => {
     const items = grouped.get(region) ?? [];
     const baseFill = regionIndex % 2 === 0 ? "#FCE4D6" : "#E2F0D9";
     const regionY = y;
     items.forEach((store) => {
-      drawCell(1, y, rowHeight, store.storeName, { fill: store.total < 2000 ? "#FFFF00" : baseFill, align: "left", fontPt: 12 });
-      drawCell(2, y, rowHeight, formatAmount(store.total), { fill: store.total < 2000 ? "#FFFF00" : baseFill, fontPt: 12 });
-      metricKeys.forEach((key, index) => drawCell(index + 3, y, rowHeight, formatAmount(store.metrics[key]), { fill: store.total < 2000 ? "#FFFF00" : baseFill, fontPt: 12 }));
-      y += rowHeight;
+      drawCell(1, y, rowHeight, store.storeName, { fill: store.total < 2000 ? "#FFFF00" : baseFill, align: "left" });
+      drawCell(2, y, rowHeight, formatAmount(store.total), { fill: store.total < 2000 ? "#FFFF00" : baseFill });
+      metricKeys.forEach((key, index) => drawCell(index + 3, y, rowHeight, formatAmount(store.metrics[key]), { fill: store.total < 2000 ? "#FFFF00" : baseFill }));
+      y += rowSlot;
     });
-    drawCell(0, regionY, Math.max(rowHeight, items.length * rowHeight), region, { fill: baseFill, bold: true, fontPt: 12 });
+    drawCell(0, regionY, Math.max(rowHeight, items.length * rowSlot - grid), region, { fill: baseFill, bold: true });
   });
 
   const totals = emptyMetrics();
   stores.forEach((store) => metricKeys.forEach((key) => { totals[key] += store.metrics[key]; }));
   drawCell(0, y, totalHeight, "", { fill: "#FFFF00", bold: true });
-  drawCell(1, y, totalHeight, "合计", { fill: "#FFFF00", bold: true, align: "left", fontPt: 12 });
-  drawCell(2, y, totalHeight, formatAmount(calcTotal(totals)), { fill: "#FFFF00", bold: true, fontPt: 12 });
-  metricKeys.forEach((key, index) => drawCell(index + 3, y, totalHeight, formatAmount(totals[key]), { fill: "#FFFF00", bold: true, fontPt: 12 }));
-  y += totalHeight;
+  drawCell(1, y, totalHeight, "合计", { fill: "#FFFF00", bold: true });
+  drawCell(2, y, totalHeight, formatAmount(calcTotal(totals)), { fill: "#FFFF00", bold: true });
+  metricKeys.forEach((key, index) => drawCell(index + 3, y, totalHeight, formatAmount(totals[key]), { fill: "#FFFF00", bold: true }));
+  y += totalHeight + grid;
 
   [
     "标黄门店表示统计当日,营业额低于2000餐厅,便于关注！",
     "制表数据来自收银记录与店长钉钉上报,仅供参考,实收数据请以财务报表为准！",
-  ].forEach((note) => {
+  ].forEach((note, index) => {
     context.fillStyle = "#FFFF00";
     context.fillRect(margin, y, canvasWidth - margin * 2, noteHeight);
-    context.strokeStyle = "#FFFFFF";
-    context.lineWidth = 2;
-    context.strokeRect(margin, y, canvasWidth - margin * 2, noteHeight);
-    context.fillStyle = "#111827";
-    context.font = `700 12pt ${fontFamily}`;
+    context.fillStyle = "#000000";
+    context.font = `700 32px ${fontFamily}`;
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.fillText(note, canvasWidth / 2, y + noteHeight / 2);
-    y += noteHeight;
+    y += noteHeight + (index === 0 ? grid : 0);
   });
-
-  context.fillStyle = "#64748B";
-  context.font = `500 10pt ${fontFamily}`;
-  context.textAlign = "center";
-  context.fillText(`营业额统计工具 · ${stores.length} 家门店 · ${regions.length} 个区域 · 1546 × 4570`, canvasWidth / 2, canvasHeight - footerHeight / 2);
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => result ? resolve(result) : reject(new Error("高清图片生成失败")), "image/png", 1);
@@ -567,7 +555,7 @@ export function RevenueTool() {
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>1546 × 4570 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>1992 × 4822 · 192 DPI 级 · 微软雅黑 12号 · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
             <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
