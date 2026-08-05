@@ -214,7 +214,7 @@ function displayDateFrom(rawDate: string) {
 
 const formatAmount = (value: number) => value === 0
   ? ""
-  : new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+  : new Intl.NumberFormat("zh-CN", { useGrouping: false, maximumFractionDigits: 2 }).format(value);
 
 function calculateTotals(stores: Store[]) {
   const totals = emptyMetrics();
@@ -287,7 +287,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
         cell.font = { name: "微软雅黑", size: 12, bold: column === 1, color: { argb: black } };
         cell.alignment = { horizontal: column === 2 ? "left" : "center", vertical: "middle" };
         cell.border = border;
-        if (column >= 3) cell.numFmt = "#,##0.00";
+        if (column >= 3) cell.numFmt = "0.00";
       }
       sheet.getRow(currentRow).height = 18;
       currentRow += 1;
@@ -300,7 +300,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
   for (let column = 3; column <= 14; column += 1) {
     const letter = sheet.getColumn(column).letter;
     totalRow.getCell(column).value = { formula: `SUM(${letter}3:${letter}${dataEnd})` };
-    totalRow.getCell(column).numFmt = "#,##0.00";
+    totalRow.getCell(column).numFmt = "0.00";
   }
   styleRow(currentRow, yellow, true);
   sheet.getRow(currentRow).height = 25;
