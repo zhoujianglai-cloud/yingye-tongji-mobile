@@ -22,6 +22,32 @@ type Store = {
 
 type OutputMode = "excel" | "image" | "both";
 
+const abnormalThresholds = {
+  营业额: 100000,
+  美团外卖: 20000,
+  饿了么: 20000,
+  京东外卖: 5000,
+  美团团购: 5000,
+  抖音团购: 20000,
+  快手团购: 5000,
+  其它外卖: 2000,
+  其他收入: 2000,
+} as const;
+
+type AbnormalMetric = keyof typeof abnormalThresholds;
+
+const abnormalMetricLabels: Record<AbnormalMetric, string> = {
+  营业额: "营业额",
+  美团外卖: "美团外卖",
+  饿了么: "饿了么",
+  京东外卖: "京东",
+  美团团购: "美团团购",
+  抖音团购: "抖音团购",
+  快手团购: "快手",
+  其它外卖: "其它外卖",
+  其他收入: "其它收入",
+};
+
 const regionOrder = [
   "福建区", "河源区", "雷州区", "梅州区", "茂名区",
   "南油区", "阳江区", "阳茂区", "湛江区", "肇庆区",
@@ -216,6 +242,25 @@ const formatAmount = (value: number) => value === 0
   ? ""
   : new Intl.NumberFormat("zh-CN", { useGrouping: false, maximumFractionDigits: 2 }).format(value);
 
+const formatLogAmount = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+
+function getAbnormalItems(store: Store) {
+  return (Object.entries(abnormalThresholds) as [AbnormalMetric, number][])
+    .filter(([key, threshold]) => (key === "营业额" ? store.total : store.metrics[key]) > threshold)
+    .map(([key, threshold]) => ({
+      key,
+      label: abnormalMetricLabels[key],
+      value: key === "营业额" ? store.total : store.metrics[key],
+      threshold,
+    }));
+}
+
+function isAbnormalCell(store: Store, column: number) {
+  if (column === 3) return store.total > abnormalThresholds.营业额;
+  const metric = metricKeys[column - 4];
+  return Boolean(metric && metric in abnormalThresholds && store.metrics[metric] > abnormalThresholds[metric as keyof typeof abnormalThresholds]);
+}
+
 function calculateTotals(stores: Store[]) {
   const totals = emptyMetrics();
   stores.forEach((store) => metricKeys.forEach((key) => { totals[key] += store.metrics[key]; }));
@@ -242,6 +287,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
   const sheet = workbook.addWorksheet("营业额统计", { views: [{ showGridLines: false }] });
   const headers = ["选择区", "门店", "营业额", ...metricKeys];
   const yellow = "FFFFFF00";
+  const alertRed = "FFE53935";
   const black = "FF000000";
   const white = "FFFFFFFF";
   const border = {
@@ -282,9 +328,10 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
       const baseFill = regionIndex % 2 === 0 ? "FFFCE4D6" : "FFE2F0D9";
       for (let column = 1; column <= 14; column += 1) {
         const cell = sheet.getCell(currentRow, column);
-        const fill = store.total < 2000 && column >= 2 ? yellow : baseFill;
+        const abnormal = isAbnormalCell(store, column);
+        const fill = abnormal ? alertRed : store.total < 2000 && column >= 2 ? yellow : baseFill;
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } };
-        cell.font = { name: "微软雅黑", size: 12, bold: column === 1, color: { argb: black } };
+        cell.font = { name: "微软雅黑", size: 12, bold: column === 1 || abnormal, color: { argb: abnormal ? white : black } };
         cell.alignment = { horizontal: column === 2 ? "left" : "center", vertical: "middle" };
         cell.border = border;
         if (column >= 3) cell.numFmt = "0.00";
@@ -308,6 +355,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
 
   [
     "标黄门店表示统计当日,营业额低于2000餐厅,便于关注！",
+    "标红单元格表示该项金额超过异常阈值,请及时核对！",
     "制表数据来自收银记录与店长钉钉上报,仅供参考,实收数据请以财务报表为准！",
   ].forEach((note) => {
     sheet.addRow([note]);
@@ -406,6 +454,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   const headerHeight = 60;
   const totalHeight = 60;
   const noteHeight = 60;
+  const noteCount = 3;
   const fontFamily = '"Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif';
   const totals = calculateTotals(stores);
   const columnTexts = getColumnTexts(stores, totals);
@@ -415,13 +464,13 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   const context = canvas.getContext("2d");
   if (!context) throw new Error("当前浏览器无法生成图片");
 
-  const sectionGaps = grid * 5;
+  const sectionGaps = grid * (noteCount + 3);
   const rowGaps = grid * Math.max(stores.length - 1, 0);
   const rowPixels = canvasHeight
     - titleHeight
     - headerHeight
     - totalHeight
-    - noteHeight * 2
+    - noteHeight * noteCount
     - sectionGaps
     - rowGaps;
   if (rowPixels < stores.length * 16) throw new Error("门店数量过多，无法在参考图尺寸内清晰排版");
@@ -521,9 +570,22 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     let regionHeight = 0;
     items.forEach((store, itemIndex) => {
       const rowHeight = rowHeights[rowIndex] ?? baseRowHeight;
-      drawCell(1, y, rowHeight, store.storeName, { fill: store.total < 2000 ? "#FFFF00" : baseFill, align: "left" });
-      drawCell(2, y, rowHeight, formatAmount(store.total), { fill: store.total < 2000 ? "#FFFF00" : baseFill });
-      metricKeys.forEach((key, index) => drawCell(index + 3, y, rowHeight, formatAmount(store.metrics[key]), { fill: store.total < 2000 ? "#FFFF00" : baseFill }));
+      const lowRevenueFill = store.total < 2000 ? "#FFFF00" : baseFill;
+      drawCell(1, y, rowHeight, store.storeName, { fill: lowRevenueFill, align: "left" });
+      drawCell(2, y, rowHeight, formatAmount(store.total), {
+        fill: store.total > abnormalThresholds.营业额 ? "#E53935" : lowRevenueFill,
+        bold: store.total > abnormalThresholds.营业额,
+        color: store.total > abnormalThresholds.营业额 ? "#FFFFFF" : undefined,
+      });
+      metricKeys.forEach((key, index) => {
+        const threshold = key in abnormalThresholds ? abnormalThresholds[key as keyof typeof abnormalThresholds] : null;
+        const abnormal = threshold !== null && store.metrics[key] > threshold;
+        drawCell(index + 3, y, rowHeight, formatAmount(store.metrics[key]), {
+          fill: abnormal ? "#E53935" : lowRevenueFill,
+          bold: abnormal,
+          color: abnormal ? "#FFFFFF" : undefined,
+        });
+      });
       regionHeight += rowHeight;
       if (itemIndex < items.length - 1) regionHeight += grid;
       rowIndex += 1;
@@ -546,6 +608,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
 
   [
     "标黄门店表示统计当日,营业额低于2000餐厅,便于关注！",
+    "标红单元格表示该项金额超过异常阈值,请及时核对！",
     "制表数据来自收银记录与店长钉钉上报,仅供参考,实收数据请以财务报表为准！",
   ].forEach((note, index) => {
     context.fillStyle = "#FFFF00";
@@ -555,7 +618,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
     context.textAlign = "center";
     context.textBaseline = "alphabetic";
     context.fillText(note, canvasWidth / 2, glyphCenteredBaseline(note, y, noteHeight, noteFontPx));
-    y += noteHeight + (index === 0 ? grid : 0);
+    y += noteHeight + (index < noteCount - 1 ? grid : 0);
   });
 
   const canvasBlob = await new Promise<Blob>((resolve, reject) => {
@@ -613,6 +676,18 @@ export function RevenueTool() {
       const { merged, extras, duplicateGroups } = mergeStores(dingding, daily);
       if (duplicateGroups) addLog(`      钉钉发现 ${duplicateGroups} 组重复门店，已自动去重`);
       if (extras.length) addLog(`      ${extras.length} 家门店仅存在于钉钉，未写入统计表`);
+      const abnormalStores = merged
+        .map((store) => ({ store, items: getAbnormalItems(store) }))
+        .filter(({ items }) => items.length > 0);
+      if (abnormalStores.length) {
+        const abnormalCount = abnormalStores.reduce((sum, item) => sum + item.items.length, 0);
+        addLog(`[异常提醒] 发现 ${abnormalStores.length} 家门店、${abnormalCount} 项金额超过阈值`);
+        abnormalStores.forEach(({ store, items }) => {
+          addLog(`[异常提醒] ${store.storeName}：${items.map((item) => `${item.label} ${formatLogAmount(item.value)}（阈值 ${formatLogAmount(item.threshold)}）`).join("；")}`);
+        });
+      } else {
+        addLog("      异常检查通过，未发现超阈值项目");
+      }
       const firstDate = dateText.trim() || dingding.find((store) => store.dateStr)?.dateStr || `${new Date().getMonth() + 1}月${new Date().getDate()}日`;
       const displayDate = displayDateFrom(firstDate);
       const safeDate = firstDate.replace(/[\\/:*?"<>|]/g, "-");
@@ -701,7 +776,7 @@ export function RevenueTool() {
 
         <div className="log-box" aria-live="polite">
           <div className="log-title"><span />运行日志</div>
-          <pre>{logs.join("\n")}</pre>
+          <pre>{logs.map((line, index) => <span className={`log-line ${line.startsWith("[异常提醒]") ? "alert" : ""}`} key={`${index}-${line}`}>{line}{index < logs.length - 1 ? "\n" : ""}</span>)}</pre>
         </div>
       </section>
 

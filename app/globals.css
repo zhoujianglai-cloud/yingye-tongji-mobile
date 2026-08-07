@@ -117,6 +117,8 @@ main {
 .log-title { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-bottom: 1px solid #e1e8f2; color: #59677e; font-size: 12px; font-weight: 750; }
 .log-title span { width: 7px; height: 7px; border-radius: 50%; background: #7dacff; box-shadow: 0 0 0 3px #e2edff; }
 .log-box pre { min-height: 82px; max-height: 170px; margin: 0; padding: 12px; overflow: auto; color: #536177; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; line-height: 1.75; white-space: pre-wrap; }
+.log-line { display: inline; }
+.log-line.alert { color: #d82323; font-weight: 800; }
 
 .how-it-works { padding: 30px 8px 14px; }
 .how-it-works h2 { margin: 0 0 16px; text-align: center; font-size: 17px; }
