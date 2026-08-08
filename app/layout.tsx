@@ -17,13 +17,13 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: `${origin}/og.png`, width: 1200, height: 630, alt: "营业额统计工具" }],
+      images: [{ url: `${origin}/og-glass.png`, width: 1200, height: 630, alt: "营业额统计工具" }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [`${origin}/og.png`],
+      images: [`${origin}/og-glass.png`],
     },
   };
 }
