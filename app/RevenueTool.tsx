@@ -717,41 +717,44 @@ export function RevenueTool() {
   };
 
   return (
-    <main>
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-      <section className="hero">
-        <div className="brand-mark" aria-hidden="true"><span /><span /></div>
-        <p className="eyebrow">手机端 · 本地处理</p>
-        <h1>营业额统计</h1>
-        <p className="subtitle">合并钉钉记录与日流水，一键生成标准统计表</p>
-        <div className="privacy-pill"><span>●</span> 文件不会上传服务器</div>
-      </section>
+    <main className="app-shell">
+      <header className="hero">
+        <div className="hero-status">
+          <div className="app-icon" aria-hidden="true">营</div>
+          <div className="privacy-pill"><span aria-hidden="true" />仅在此设备处理</div>
+        </div>
+        <p className="eyebrow">营业额统计工具</p>
+        <h1>合并两份流水，<br />生成标准统计表。</h1>
+        <p className="subtitle">选择钉钉记录和日流水，自动匹配、去重并生成 Excel 或高清长图。</p>
+      </header>
 
-      <section className="tool-panel">
-        <div className="step-heading"><span>1</span><div><h2>选择数据文件</h2><p>支持 Excel .xlsx 和 .xls 格式</p></div></div>
+      <section className="tool-panel" aria-labelledby="file-section-title">
+        <div className="step-heading">
+          <span aria-hidden="true">1</span>
+          <div><h2 id="file-section-title">选择数据文件</h2><p>支持 .xlsx 和 .xls，文件不会上传</p></div>
+        </div>
         <div className="file-grid">
           <FilePicker label="钉钉记录" file={dingdingFile} onChange={setDingdingFile} />
           <FilePicker label="日流水表" file={dailyFile} onChange={setDailyFile} />
         </div>
 
         <div className="date-field">
-          <label htmlFor="stat-date">统计日期 <small>选填</small></label>
-          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} placeholder="例如：8月5日（留空自动提取）" />
+          <label htmlFor="stat-date"><span>统计日期</span><small>选填</small></label>
+          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} placeholder="留空将自动提取" autoComplete="off" />
         </div>
 
         <fieldset className="output-field">
           <legend>输出格式</legend>
+          <p>Excel 便于编辑，图片适合保存和分享</p>
           <div className="output-options">
             {([
-              ["excel", "Excel 表格", "便于编辑"],
-              ["image", "高清图片", "便于保存分享"],
-              ["both", "两者都要", "表格 + 图片"],
-            ] as const).map(([value, title, hint]) => (
+              ["excel", "Excel"],
+              ["image", "图片"],
+              ["both", "全部"],
+            ] as const).map(([value, title]) => (
               <label key={value} className={outputMode === value ? "selected" : ""}>
                 <input type="radio" name="output-mode" value={value} checked={outputMode === value} onChange={() => setOutputMode(value)} />
-                <span><strong>{title}</strong><small>{hint}</small></span>
-                <i aria-hidden="true" />
+                <strong>{title}</strong>
               </label>
             ))}
           </div>
@@ -763,11 +766,11 @@ export function RevenueTool() {
             : outputMode === "excel" ? "生成并下载 Excel" : outputMode === "image" ? "生成高清图片" : "生成 Excel 和高清图片"}
         </button>
 
-        {completed && <div className="success-banner"><span>✓</span><div><strong>统计表已生成</strong><small>{completed.stores} 家门店 · {completed.regions} 个区域</small></div></div>}
+        {completed && <div className="success-banner" role="status"><span aria-hidden="true">✓</span><div><strong>统计表已生成</strong><small>{completed.stores} 家门店 · {completed.regions} 个区域</small></div></div>}
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 600 DPI · 字体垂直居中 · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 600 DPI · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
             <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
@@ -775,23 +778,12 @@ export function RevenueTool() {
         )}
 
         <div className="log-box" aria-live="polite">
-          <div className="log-title"><span />运行日志</div>
+          <div className="log-title"><span aria-hidden="true" />运行日志</div>
           <pre>{logs.map((line, index) => <span className={`log-line ${line.startsWith("[异常提醒]") ? "alert" : ""}`} key={`${index}-${line}`}>{line}{index < logs.length - 1 ? "\n" : ""}</span>)}</pre>
         </div>
       </section>
 
-      <section className="how-it-works">
-        <h2>三步完成</h2>
-        <div className="flow">
-          <div><b>01</b><strong>选择文件</strong><span>从手机“文件”中选择</span></div>
-          <i>→</i>
-          <div><b>02</b><strong>自动合并</strong><span>匹配、去重并补零</span></div>
-          <i>→</i>
-          <div><b>03</b><strong>下载结果</strong><span>保存到手机或分享</span></div>
-        </div>
-      </section>
-
-      <footer>营业额统计工具 · 所有数据仅在当前设备处理</footer>
+      <footer><span aria-hidden="true" />所有数据仅在当前设备处理</footer>
     </main>
   );
 }

@@ -9,6 +9,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   const title = "营业额统计工具";
   const description = "在手机浏览器中合并钉钉记录与日流水，生成营业额统计表。";
+
   return {
     title,
     description,
@@ -17,13 +18,13 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: `${origin}/og.png`, width: 1200, height: 630, alt: "营业额统计工具" }],
+      images: [{ url: `${origin}/og-hig.png`, width: 1200, height: 630, alt: "营业额统计工具" }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [`${origin}/og.png`],
+      images: [`${origin}/og-hig.png`],
     },
   };
 }
