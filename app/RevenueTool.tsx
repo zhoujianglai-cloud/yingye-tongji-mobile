@@ -630,15 +630,16 @@ async function createHighResImage(stores: Store[], displayDate: string) {
 
 function FilePicker({ label, file, onChange }: { label: string; file: File | null; onChange: (file: File | null) => void }) {
   const id = `file-${label}`;
+  const shortLabel = label === "钉钉记录" ? "钉" : "流";
   return (
     <label className={`file-card ${file ? "has-file" : ""}`} htmlFor={id}>
       <input id={id} type="file" accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.files?.[0] ?? null)} />
-      <span className="file-icon" aria-hidden="true">{file ? "✓" : "+"}</span>
+      <span className="file-icon" aria-hidden="true">{shortLabel}</span>
       <span className="file-copy">
         <strong>{label}</strong>
-        <small>{file ? file.name : "点击选择 Excel 文件"}</small>
+        {file && <small>{file.name}</small>}
       </span>
-      <span className="file-action">{file ? "更换" : "选择"}</span>
+      <span className="file-action">{file ? "已选择" : "选择"}</span>
     </label>
   );
 }
@@ -718,20 +719,34 @@ export function RevenueTool() {
 
   return (
     <main className="app-shell">
+      <div className="ambient ambient-one" aria-hidden="true" />
+      <div className="ambient ambient-two" aria-hidden="true" />
+      <div className="ambient ambient-three" aria-hidden="true" />
+
       <header className="hero">
-        <div className="hero-status">
-          <div className="app-icon" aria-hidden="true">营</div>
-          <div className="privacy-pill"><span aria-hidden="true" />仅在此设备处理</div>
+        <div className="hero-bar">
+          <div className="brand-lockup">
+            <span className="brand-icon" aria-hidden="true">营</span>
+            <span><strong>营业额统计</strong><small>移动端数据工作台</small></span>
+          </div>
+          <div className="hero-signature" aria-label="X-ME 晴"><strong>X-ME</strong><span aria-hidden="true">|</span><strong>晴</strong></div>
+          <div className="privacy-pill"><span aria-hidden="true" />仅在当前设备处理</div>
         </div>
-        <p className="eyebrow">营业额统计工具</p>
-        <h1>合并两份流水，<br />生成标准统计表。</h1>
-        <p className="subtitle">选择钉钉记录和日流水，自动匹配、去重并生成 Excel 或高清长图。</p>
+
+        <div className="hero-copy">
+          <h1>两份流水 <span className="headline-divider" aria-hidden="true">|</span> <span className="headline-accent">一键合并</span></h1>
+          <div className="feature-pills" aria-label="工具特点">
+            <span>自动匹配</span><span>异常标红</span><span>高清导出</span>
+          </div>
+        </div>
       </header>
 
-      <section className="tool-panel" aria-labelledby="file-section-title">
+      <section className="tool-panel">
+        <div className="panel-shine" aria-hidden="true" />
         <div className="step-heading">
-          <span aria-hidden="true">1</span>
-          <div><h2 id="file-section-title">选择数据文件</h2><p>支持 .xlsx 和 .xls，文件不会上传</p></div>
+          <span>01</span>
+          <div><h2>选择数据文件</h2></div>
+          <div className={`panel-status ${ready ? "ready" : ""}`}><i aria-hidden="true" />{ready ? "可以生成" : "等待文件"}</div>
         </div>
         <div className="file-grid">
           <FilePicker label="钉钉记录" file={dingdingFile} onChange={setDingdingFile} />
@@ -739,22 +754,22 @@ export function RevenueTool() {
         </div>
 
         <div className="date-field">
-          <label htmlFor="stat-date"><span>统计日期</span><small>选填</small></label>
-          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} placeholder="留空将自动提取" autoComplete="off" />
+          <label htmlFor="stat-date">统计日期 <small>选填</small></label>
+          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} autoComplete="off" />
         </div>
 
         <fieldset className="output-field">
           <legend>输出格式</legend>
-          <p>Excel 便于编辑，图片适合保存和分享</p>
           <div className="output-options">
             {([
-              ["excel", "Excel"],
-              ["image", "图片"],
-              ["both", "全部"],
+              ["excel", "Excel 表格"],
+              ["image", "高清图片"],
+              ["both", "两者都要"],
             ] as const).map(([value, title]) => (
               <label key={value} className={outputMode === value ? "selected" : ""}>
                 <input type="radio" name="output-mode" value={value} checked={outputMode === value} onChange={() => setOutputMode(value)} />
-                <strong>{title}</strong>
+                <span><strong>{title}</strong></span>
+                <i aria-hidden="true" />
               </label>
             ))}
           </div>
@@ -766,11 +781,11 @@ export function RevenueTool() {
             : outputMode === "excel" ? "生成并下载 Excel" : outputMode === "image" ? "生成高清图片" : "生成 Excel 和高清图片"}
         </button>
 
-        {completed && <div className="success-banner" role="status"><span aria-hidden="true">✓</span><div><strong>统计表已生成</strong><small>{completed.stores} 家门店 · {completed.regions} 个区域</small></div></div>}
+        {completed && <div className="success-banner" role="status"><span aria-hidden="true" /><div><strong>统计表已生成</strong><small>{completed.stores} 家门店 · {completed.regions} 个区域</small></div></div>}
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 600 DPI · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 600 DPI · 字体垂直居中 · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
             <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
@@ -778,12 +793,19 @@ export function RevenueTool() {
         )}
 
         <div className="log-box" aria-live="polite">
-          <div className="log-title"><span aria-hidden="true" />运行日志</div>
+          <div className="log-title"><span aria-hidden="true" />运行日志<small>实时处理状态</small></div>
           <pre>{logs.map((line, index) => <span className={`log-line ${line.startsWith("[异常提醒]") ? "alert" : ""}`} key={`${index}-${line}`}>{line}{index < logs.length - 1 ? "\n" : ""}</span>)}</pre>
         </div>
       </section>
 
-      <footer><span aria-hidden="true" />所有数据仅在当前设备处理</footer>
+      <section className="how-it-works">
+        <div className="section-heading"><p>工作流程</p><h2>简单三步，完成统计</h2></div>
+        <div className="flow">
+          <div><b>01</b><strong>选择文件</strong></div>
+          <div><b>02</b><strong>自动合并</strong></div>
+          <div><b>03</b><strong>下载结果</strong></div>
+        </div>
+      </section>
     </main>
   );
 }
