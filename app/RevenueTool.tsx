@@ -253,8 +253,14 @@ const formatAmount = (value: number) => value === 0
 
 const formatLogAmount = (value: number) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 
+function getAbnormalThreshold(store: Store, key: AbnormalMetric) {
+  if (key === "其它外卖" && store.storeName === "阳西溪头店") return 5000;
+  return abnormalThresholds[key];
+}
+
 function getAbnormalItems(store: Store) {
   return (Object.entries(abnormalThresholds) as [AbnormalMetric, number][])
+    .map(([key]) => [key, getAbnormalThreshold(store, key)] as const)
     .filter(([key, threshold]) => (key === "营业额" ? store.total : store.metrics[key]) > threshold)
     .map(([key, threshold]) => ({
       key,
@@ -265,9 +271,9 @@ function getAbnormalItems(store: Store) {
 }
 
 function isAbnormalCell(store: Store, column: number) {
-  if (column === 3) return store.total > abnormalThresholds.营业额;
+  if (column === 3) return store.total > getAbnormalThreshold(store, "营业额");
   const metric = metricKeys[column - 4];
-  return Boolean(metric && metric in abnormalThresholds && store.metrics[metric] > abnormalThresholds[metric as keyof typeof abnormalThresholds]);
+  return Boolean(metric && metric in abnormalThresholds && store.metrics[metric] > getAbnormalThreshold(store, metric as AbnormalMetric));
 }
 
 function calculateTotals(stores: Store[]) {
@@ -604,7 +610,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
         color: store.total > abnormalThresholds.营业额 ? "#FFFFFF" : undefined,
       });
       metricKeys.forEach((key, index) => {
-        const threshold = key in abnormalThresholds ? abnormalThresholds[key as keyof typeof abnormalThresholds] : null;
+        const threshold = key in abnormalThresholds ? getAbnormalThreshold(store, key as AbnormalMetric) : null;
         const abnormal = threshold !== null && store.metrics[key] > threshold;
         drawCell(index + 3, y, rowHeight, formatAmount(store.metrics[key]), {
           fill: abnormal ? "#E53935" : lowRevenueFill,

@@ -48,4 +48,6 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /系统菜单选择“存储图像”/);
   assert.doesNotMatch(source, /长按上方图片/);
   assert.match(source, /其它外卖: 2000/);
+  assert.match(source, /key === "其它外卖" && store\.storeName === "阳西溪头店"/);
+  assert.match(source, /return 5000/);
 });
