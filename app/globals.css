@@ -501,10 +501,12 @@ footer > span {
 
 .save-image-button {
   display: flex;
+  width: 100%;
   min-height: 46px;
   align-items: center;
   justify-content: center;
   margin-top: 11px;
+  border: 0;
   border-radius: 13px;
   color: #ffffff;
   background: var(--primary-strong);

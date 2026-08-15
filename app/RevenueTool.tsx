@@ -30,11 +30,20 @@ const abnormalThresholds = {
   美团团购: 5000,
   抖音团购: 20000,
   快手团购: 5000,
-  其它外卖: 3000,
+  其它外卖: 2000,
   其他收入: 2000,
 } as const;
 
 type AbnormalMetric = keyof typeof abnormalThresholds;
+
+type ImageResult = {
+  url: string;
+  filename: string;
+  width: number;
+  height: number;
+  dpi: number | null;
+  blob: Blob;
+};
 
 const abnormalMetricLabels: Record<AbnormalMetric, string> = {
   营业额: "营业额",
@@ -439,15 +448,32 @@ async function setPngDpi(blob: Blob, dpi: number) {
   return new Blob([output], { type: "image/png" });
 }
 
+function isAppleMobileDevice() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function createHighResImage(stores: Store[], displayDate: string) {
   const grouped = new Map<string, Store[]>();
   stores.forEach((store) => grouped.set(store.region, [...(grouped.get(store.region) ?? []), store]));
   grouped.forEach((items) => items.sort((a, b) => b.total - a.total));
   const regions = [...regionOrder.filter((region) => grouped.has(region)), ...[...grouped.keys()].filter((region) => !regionOrder.includes(region))];
 
-  // 与参考图保持完全一致的像素尺寸，并在 PNG 中写入 600 DPI 元数据。
-  const canvasWidth = 2698;
-  const canvasHeight = 6418;
+  // iOS 对超大 Canvas/Blob 的读取不稳定，使用不超过 4096px 的安全尺寸。
+  const appleMobile = isAppleMobileDevice();
+  const canvasWidth = appleMobile ? 2048 : 2698;
+  const canvasHeight = appleMobile ? 4096 : 6418;
   const outputDpi = 600;
   const grid = 4;
   const titleHeight = 80;
@@ -624,8 +650,20 @@ async function createHighResImage(stores: Store[], displayDate: string) {
   const canvasBlob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((result) => result ? resolve(result) : reject(new Error("高清图片生成失败")), "image/png", 1);
   });
-  const blob = await setPngDpi(canvasBlob, outputDpi);
-  return { blob, width: canvasWidth, height: canvasHeight };
+  canvas.width = 1;
+  canvas.height = 1;
+
+  let blob = canvasBlob;
+  let dpi: number | null = null;
+  if (!appleMobile) {
+    try {
+      blob = await setPngDpi(canvasBlob, outputDpi);
+      dpi = outputDpi;
+    } catch {
+      // DPI 只是打印元数据；写入失败时仍保留完整 PNG，不让整个流程失败。
+    }
+  }
+  return { blob, width: canvasWidth, height: canvasHeight, dpi };
 }
 
 function FilePicker({ label, file, onChange }: { label: string; file: File | null; onChange: (file: File | null) => void }) {
@@ -652,7 +690,7 @@ export function RevenueTool() {
   const [outputMode, setOutputMode] = useState<OutputMode>("excel");
   const [working, setWorking] = useState(false);
   const [completed, setCompleted] = useState<{ stores: number; regions: number } | null>(null);
-  const [imageResult, setImageResult] = useState<{ url: string; filename: string; width: number; height: number } | null>(null);
+  const [imageResult, setImageResult] = useState<ImageResult | null>(null);
   const ready = useMemo(() => Boolean(dingdingFile && dailyFile && !working), [dingdingFile, dailyFile, working]);
 
   const run = async () => {
@@ -693,10 +731,6 @@ export function RevenueTool() {
       const displayDate = displayDateFrom(firstDate);
       const safeDate = firstDate.replace(/[\\/:*?"<>|]/g, "-");
       addLog("[4/4] 正在生成统计结果…");
-      if (outputMode === "excel" || outputMode === "both") {
-        await createOutput(merged, displayDate, `${safeDate} 统计表.xlsx`);
-        addLog("      Excel 统计表已下载");
-      }
       if (outputMode === "image" || outputMode === "both") {
         const image = await createHighResImage(merged, displayDate);
         setImageResult({
@@ -704,8 +738,15 @@ export function RevenueTool() {
           filename: `${safeDate} 营业额统计高清图.png`,
           width: image.width,
           height: image.height,
+          dpi: image.dpi,
+          blob: image.blob,
         });
         addLog("      高清长图已生成，请点击保存图片");
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      if (outputMode === "excel" || outputMode === "both") {
+        await createOutput(merged, displayDate, `${safeDate} 统计表.xlsx`);
+        addLog("      Excel 统计表已下载");
       }
       const regionCount = new Set(merged.map((store) => store.region)).size;
       addLog(`完成！共 ${merged.length} 家门店，${regionCount} 个区域`);
@@ -715,6 +756,20 @@ export function RevenueTool() {
     } finally {
       setWorking(false);
     }
+  };
+
+  const saveImage = async () => {
+    if (!imageResult) return;
+    const file = new File([imageResult.blob], imageResult.filename, { type: "image/png" });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: imageResult.filename });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      }
+    }
+    downloadBlob(imageResult.blob, imageResult.filename);
   };
 
   return (
@@ -785,10 +840,10 @@ export function RevenueTool() {
 
         {imageResult && (
           <div className="image-result">
-            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height} · 600 DPI · 字体垂直居中 · PNG</small></div><span>已生成</span></div>
+            <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height}{imageResult.dpi ? ` · ${imageResult.dpi} DPI` : " · iPhone 兼容尺寸"} · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
-            <a className="save-image-button" href={imageResult.url} download={imageResult.filename}>保存高清图片</a>
-            <p>iPhone 如未自动保存：长按上方图片，选择“存储到照片”。</p>
+            <button type="button" className="save-image-button" onClick={saveImage}>保存高清图片</button>
+            <p>iPhone 请点击“保存高清图片”，在系统菜单选择“存储图像”，无需长按预览图。</p>
           </div>
         )}
 
