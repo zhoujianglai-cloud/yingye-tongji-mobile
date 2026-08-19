@@ -766,6 +766,10 @@ export function RevenueTool() {
 
   const saveImage = async () => {
     if (!imageResult) return;
+    if (!isAppleMobileDevice()) {
+      downloadBlob(imageResult.blob, imageResult.filename);
+      return;
+    }
     const file = new File([imageResult.blob], imageResult.filename, { type: "image/png" });
     if (navigator.share && navigator.canShare?.({ files: [file] })) {
       try {

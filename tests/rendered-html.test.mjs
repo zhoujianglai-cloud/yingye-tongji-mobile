@@ -45,6 +45,7 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /const canvasHeight = appleMobile \? 4096 : 6418/);
   assert.match(source, /if \(!appleMobile\)/);
   assert.match(source, /navigator\.canShare\?\.\(\{ files: \[file\] \}\)/);
+  assert.match(source, /if \(!isAppleMobileDevice\(\)\) \{\s*downloadBlob\(imageResult\.blob, imageResult\.filename\);\s*return;/);
   assert.match(source, /系统菜单选择“存储图像”/);
   assert.doesNotMatch(source, /长按上方图片/);
   assert.match(source, /其它外卖: 2000/);
