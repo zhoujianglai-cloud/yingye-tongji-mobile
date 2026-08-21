@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 
 const metricKeys = [
   "现金", "微信", "支付宝", "美团外卖", "饿了么", "京东外卖",
@@ -100,6 +100,18 @@ const formatSourceDate = (value: unknown) => {
   }
   return String(value ?? "").trim();
 };
+
+function extractDateFromCashierFilename(filename: string) {
+  const separated = filename.match(/(20\d{2})[-_.年](\d{1,2})[-_.月](\d{1,2})/);
+  const compact = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+  const matched = separated ?? compact;
+  if (!matched) return "";
+  const year = Number(matched[1]);
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 function readDingding(rows: unknown[][]): Store[] {
   const stores: Store[] = [];
@@ -697,7 +709,36 @@ export function RevenueTool() {
   const [working, setWorking] = useState(false);
   const [completed, setCompleted] = useState<{ stores: number; regions: number } | null>(null);
   const [imageResult, setImageResult] = useState<ImageResult | null>(null);
+  const cashierDateRequest = useRef(0);
+  const manualDateEdits = useRef(0);
   const ready = useMemo(() => Boolean(dingdingFile && dailyFile && !working), [dingdingFile, dailyFile, working]);
+
+  const handleDingdingFileChange = (file: File | null) => {
+    const requestId = ++cashierDateRequest.current;
+    setDingdingFile(file);
+    if (!file) {
+      setDateText("");
+      return;
+    }
+
+    setDateText(extractDateFromCashierFilename(file.name));
+    const editVersion = manualDateEdits.current;
+    void (async () => {
+      try {
+        const cashierDate = readDingding(await parseWorkbook(file)).find((store) => store.dateStr)?.dateStr;
+        if (cashierDate && requestId === cashierDateRequest.current && editVersion === manualDateEdits.current) {
+          setDateText(cashierDate);
+        }
+      } catch {
+        // 文件名日期仍可作为默认值；正式生成时会显示完整的读取错误。
+      }
+    })();
+  };
+
+  const handleDateTextChange = (event: ChangeEvent<HTMLInputElement>) => {
+    manualDateEdits.current += 1;
+    setDateText(event.target.value);
+  };
 
   const run = async () => {
     if (!dingdingFile || !dailyFile) return;
@@ -814,13 +855,13 @@ export function RevenueTool() {
           <div className={`panel-status ${ready ? "ready" : ""}`}><i aria-hidden="true" />{ready ? "可以生成" : "等待文件"}</div>
         </div>
         <div className="file-grid">
-          <FilePicker label="钉钉记录" file={dingdingFile} onChange={setDingdingFile} />
+          <FilePicker label="钉钉记录" file={dingdingFile} onChange={handleDingdingFileChange} />
           <FilePicker label="日流水表" file={dailyFile} onChange={setDailyFile} />
         </div>
 
         <div className="date-field">
-          <label htmlFor="stat-date">统计日期 <small>选填</small></label>
-          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} autoComplete="off" />
+          <label htmlFor="stat-date">统计日期 <small>自动填写，可修改</small></label>
+          <input id="stat-date" value={dateText} onChange={handleDateTextChange} autoComplete="off" />
         </div>
 
         <fieldset className="output-field">

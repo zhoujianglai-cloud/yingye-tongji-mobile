@@ -51,4 +51,7 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /其它外卖: 2000/);
   assert.match(source, /key === "其它外卖" && store\.storeName === "阳西溪头店"/);
   assert.match(source, /return 5000/);
+  assert.match(source, /function extractDateFromCashierFilename/);
+  assert.match(source, /readDingding\(await parseWorkbook\(file\)\)\.find/);
+  assert.match(source, /统计日期 <small>自动填写，可修改<\/small>/);
 });
