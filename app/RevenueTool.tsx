@@ -98,7 +98,22 @@ const formatSourceDate = (value: unknown) => {
     const day = String(value.getDate()).padStart(2, "0");
     return `${value.getFullYear()}-${month}-${day}`;
   }
-  return String(value ?? "").trim();
+  if (typeof value === "number" && value >= 20000 && value <= 80000) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000);
+    if (!Number.isNaN(date.getTime())) {
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      return `${date.getUTCFullYear()}-${month}-${day}`;
+    }
+  }
+  const text = String(value ?? "").trim();
+  const fullDate = text.match(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+  if (fullDate) {
+    return `${fullDate[1]}-${String(Number(fullDate[2])).padStart(2, "0")}-${String(Number(fullDate[3])).padStart(2, "0")}`;
+  }
+  const monthDay = text.match(/(\d{1,2})月(\d{1,2})日?/);
+  if (monthDay) return `${Number(monthDay[1])}月${Number(monthDay[2])}日`;
+  return text;
 };
 
 function extractDateFromCashierFilename(filename: string) {
@@ -147,7 +162,7 @@ function readDingding(rows: unknown[][]): Store[] {
       storeName,
       storeId: extractStoreId(storeField),
       source: "钉钉",
-      dateStr: formatSourceDate(row[19]),
+      dateStr: formatSourceDate(row[4]),
       metrics,
       total: calcTotal(metrics),
     });

@@ -54,4 +54,6 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /function extractDateFromCashierFilename/);
   assert.match(source, /readDingding\(await parseWorkbook\(file\)\)\.find/);
   assert.match(source, /统计日期 <small>自动填写，可修改<\/small>/);
+  assert.match(source, /dateStr: formatSourceDate\(row\[4\]\)/);
+  assert.doesNotMatch(source, /dateStr: formatSourceDate\(row\[19\]\)/);
 });
