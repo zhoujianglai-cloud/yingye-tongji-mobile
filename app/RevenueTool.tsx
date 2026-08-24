@@ -4,7 +4,7 @@ import { ChangeEvent, useMemo, useRef, useState } from "react";
 
 const metricKeys = [
   "现金", "微信", "支付宝", "美团外卖", "饿了么", "京东外卖",
-  "美团团购", "抖音团购", "快手团购", "其它外卖", "其他收入",
+  "抖音外卖", "美团团购", "抖音团购", "快手团购", "其它外卖", "其他收入",
 ] as const;
 
 type MetricKey = (typeof metricKeys)[number];
@@ -64,7 +64,7 @@ const regionOrder = [
 
 const emptyMetrics = (): Metrics => ({
   现金: 0, 微信: 0, 支付宝: 0, 美团外卖: 0, 饿了么: 0, 京东外卖: 0,
-  美团团购: 0, 抖音团购: 0, 快手团购: 0, 其它外卖: 0, 其他收入: 0,
+  抖音外卖: 0, 美团团购: 0, 抖音团购: 0, 快手团购: 0, 其它外卖: 0, 其他收入: 0,
 });
 
 const toNum = (value: unknown) => {
@@ -130,6 +130,8 @@ function extractDateFromCashierFilename(filename: string) {
 
 function readDingding(rows: unknown[][]): Store[] {
   const stores: Store[] = [];
+  const hasDouyinDelivery = rows.slice(0, 2).some((row) => row.some((cell) => String(cell ?? "").trim() === "抖音外卖"));
+  const shiftedColumn = (legacyIndex: number) => legacyIndex + (hasDouyinDelivery ? 1 : 0);
   for (let r = 2; r < rows.length; r += 1) {
     const row = rows[r] ?? [];
     if (!String(row[0] ?? "").trim()) continue;
@@ -152,11 +154,12 @@ function readDingding(rows: unknown[][]): Store[] {
     metrics.美团外卖 = toNum(row[24]);
     metrics.饿了么 = toNum(row[25]);
     metrics.京东外卖 = toNum(row[26]);
-    metrics.美团团购 = toNum(row[27]);
-    metrics.抖音团购 = toNum(row[28]);
-    metrics.快手团购 = toNum(row[29]);
-    metrics.其它外卖 = toNum(row[32]) + toNum(row[35]) + toNum(row[38]);
-    metrics.其他收入 = toNum(row[41]) + toNum(row[44]) + toNum(row[47]) + toNum(row[50]);
+    metrics.抖音外卖 = hasDouyinDelivery ? toNum(row[27]) : 0;
+    metrics.美团团购 = toNum(row[shiftedColumn(27)]);
+    metrics.抖音团购 = toNum(row[shiftedColumn(28)]);
+    metrics.快手团购 = toNum(row[shiftedColumn(29)]);
+    metrics.其它外卖 = toNum(row[shiftedColumn(32)]) + toNum(row[shiftedColumn(35)]) + toNum(row[shiftedColumn(38)]);
+    metrics.其他收入 = toNum(row[shiftedColumn(41)]) + toNum(row[shiftedColumn(44)]) + toNum(row[shiftedColumn(47)]) + toNum(row[shiftedColumn(50)]);
     stores.push({
       region,
       storeName,
@@ -328,6 +331,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
   workbook.creator = "营业额统计网页版";
   const sheet = workbook.addWorksheet("营业额统计", { views: [{ showGridLines: false }] });
   const headers = ["选择区", "门店", "营业额", ...metricKeys];
+  const outputColumnCount = headers.length;
   const yellow = "FFFFFF00";
   const alertRed = "FFE53935";
   const black = "FF000000";
@@ -339,7 +343,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     right: { style: "medium" as const, color: { argb: white } },
   };
   const styleRow = (rowNumber: number, fill: string, bold = false) => {
-    for (let column = 1; column <= 14; column += 1) {
+    for (let column = 1; column <= outputColumnCount; column += 1) {
       const cell = sheet.getCell(rowNumber, column);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } };
       cell.font = { name: "微软雅黑", size: 12, bold, color: { argb: black } };
@@ -348,7 +352,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     }
   };
 
-  sheet.mergeCells("A1:N1");
+  sheet.mergeCells(1, 1, 1, outputColumnCount);
   sheet.getCell("A1").value = `${displayDate}营业额统计`;
   styleRow(1, yellow, true);
   sheet.getCell("A1").font = { name: "微软雅黑", size: 16, bold: true, color: { argb: black } };
@@ -368,7 +372,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     items.forEach((store) => {
       sheet.addRow([store.region, store.storeName, store.total, ...metricKeys.map((key) => store.metrics[key] || null)]);
       const baseFill = regionIndex % 2 === 0 ? "FFFCE4D6" : "FFE2F0D9";
-      for (let column = 1; column <= 14; column += 1) {
+      for (let column = 1; column <= outputColumnCount; column += 1) {
         const cell = sheet.getCell(currentRow, column);
         const abnormal = isAbnormalCell(store, column);
         const fill = abnormal ? alertRed : store.total < 2000 && column >= 2 ? yellow : baseFill;
@@ -386,7 +390,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
 
   const dataEnd = currentRow - 1;
   const totalRow = sheet.addRow([null, "合计"]);
-  for (let column = 3; column <= 14; column += 1) {
+  for (let column = 3; column <= outputColumnCount; column += 1) {
     const letter = sheet.getColumn(column).letter;
     totalRow.getCell(column).value = { formula: `SUM(${letter}3:${letter}${dataEnd})` };
     totalRow.getCell(column).numFmt = "0.00";
@@ -401,7 +405,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     "制表数据来自收银记录与店长钉钉上报,仅供参考,实收数据请以财务报表为准！",
   ].forEach((note) => {
     sheet.addRow([note]);
-    sheet.mergeCells(currentRow, 1, currentRow, 14);
+    sheet.mergeCells(currentRow, 1, currentRow, outputColumnCount);
     styleRow(currentRow, yellow, true);
     sheet.getRow(currentRow).height = 25;
     currentRow += 1;
@@ -409,7 +413,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
 
   const totals = calculateTotals(stores);
   const columnTexts = getColumnTexts(stores, totals);
-  const minimumWidths = [8, 12, 12, 10, 12, 10, 12, 12, 12, 12, 12, 10, 12, 10];
+  const minimumWidths = [8, 12, 12, 10, 12, 10, 12, 12, 12, 12, 12, 12, 10, 12, 10];
   columnTexts.forEach((texts, index) => {
     const contentWidth = Math.max(...texts.map(excelTextUnits)) + 2;
     sheet.getColumn(index + 1).width = Math.max(minimumWidths[index], contentWidth);
@@ -542,7 +546,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
 
   // 先按最长内容测量列宽，再等比铺满固定宽度，所有列线都落在整数像素上。
   context.font = `700 ${bodyFontPx}px ${fontFamily}`;
-  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
+  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 130, 112, 130, 112];
   const desiredWidths = columnTexts.map((texts, index) => {
     const measured = Math.max(...texts.map((text) => context.measureText(text).width));
     return Math.max(minimumWidths[index], Math.ceil(measured + 28));
