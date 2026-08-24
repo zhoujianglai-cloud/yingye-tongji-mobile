@@ -189,6 +189,7 @@ function readDaily(rows: unknown[][]): Store[] {
     metrics.美团外卖 = toNum(row[51]);
     metrics.饿了么 = toNum(row[49]);
     metrics.京东外卖 = toNum(row[55]);
+    metrics.抖音外卖 = toNum(row[28]);
     metrics.美团团购 = toNum(row[37]);
     metrics.抖音团购 = toNum(row[26]);
     metrics.快手团购 = toNum(row[29]);
@@ -258,6 +259,7 @@ function mergeStores(dingding: Store[], daily: Store[]) {
       return;
     }
     metricKeys.forEach((key) => {
+      if (key === "抖音外卖") return;
       if (matched.metrics[key] === 0 && store.metrics[key] !== 0) matched.metrics[key] = store.metrics[key];
     });
     matched.total = calcTotal(matched.metrics);
