@@ -278,6 +278,13 @@ function mergeStores(dingding: Store[], daily: Store[]) {
     }
     metricKeys.forEach((key) => {
       if (key === "抖音外卖") return;
+      if (key === "美团团购") {
+        const cashierAmount = store.metrics[key];
+        if (cashierAmount > 0 && matched.metrics[key] <= cashierAmount * 2) {
+          matched.metrics[key] = cashierAmount;
+        }
+        return;
+      }
       if (matched.metrics[key] === 0 && store.metrics[key] !== 0) matched.metrics[key] = store.metrics[key];
     });
     matched.total = calcTotal(matched.metrics);

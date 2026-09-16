@@ -44,3 +44,21 @@ test("unrecognized or ambiguous headers produce an error rather than wrong amoun
   assert.throws(() => readDaily([["错误文件"]]), /缺少/);
   assert.throws(() => readDaily([["门店", "应收金额", "门店"]]), /重复表头/);
 });
+
+test("Meituan group buying uses cashier through twice its amount and recalculates totals", () => {
+  for (const [cashierAmount, dailyAmount, expected] of [
+    [100, 150, 100], [100, 200, 100], [100, 200.01, 200.01],
+    [100, 0, 100], [0, 143, 143], [0, 0, 0],
+    [97.8, 143, 97.8], [97.8, 195.6, 97.8], [97.8, 195.61, 195.61],
+  ]) {
+    const daily = readDaily(rowsFor({ ...record, 美团团购r: dailyAmount }));
+    const cashier = { ...daily[0], source: "钉钉", metrics: { ...daily[0].metrics, 美团团购: cashierAmount } };
+    const result = mergeStores([cashier], daily).merged[0];
+    assert.equal(result.metrics.美团团购, expected, `${cashierAmount} / ${dailyAmount}`);
+    assert.ok(Math.abs(result.total - (daily[0].total - dailyAmount + expected)) < 0.000001);
+    for (const key of Object.keys(result.metrics)) {
+      if (key !== "美团团购") assert.equal(result.metrics[key], daily[0].metrics[key]);
+    }
+    assert.equal(daily[0].metrics.美团团购, dailyAmount);
+  }
+});
