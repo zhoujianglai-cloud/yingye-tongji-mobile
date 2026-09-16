@@ -207,7 +207,8 @@ function readDaily(rows: unknown[][]): Store[] {
     metrics.美团外卖 = toNum(cell(row, "美团"));
     metrics.饿了么 = toNum(cell(row, "饿了么"));
     metrics.京东外卖 = toNum(cell(row, "京东"));
-    metrics.抖音外卖 = toNum(cell(row, "抖音外卖"));
+    // Match exact aliases, never 抖音收入. Prefer the explicit header even at zero.
+    metrics.抖音外卖 = toNum(cell(row, columns.has("抖音外卖") ? "抖音外卖" : "抖音"));
     metrics.美团团购 = toNum(cell(row, "美团团购r"));
     metrics.抖音团购 = toNum(cell(row, "抖音团购"));
     metrics.快手团购 = toNum(cell(row, "快手团购"));

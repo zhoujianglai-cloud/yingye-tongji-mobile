@@ -15,6 +15,23 @@ const record = { 区域: "茂名区", 门店: "长岐化吴路店-MM012X", 应�
   抖音团购: 333.28, 快手团购: 15, 本地外卖: 0, 美团团购r: 143 };
 const rowsFor = (obj, headers = Object.keys(obj)) => [headers, headers.map(key => obj[key])];
 
+test("Douyin delivery accepts either exact header without counting income or doubling amounts", () => {
+  for (const [extra, expected] of [
+    [{ 抖音: 42.43, 抖音收入: 35.59 }, 42.43],
+    [{ 抖音外卖: 42.43, 抖音收入: 35.59 }, 42.43],
+    [{ 抖音: 42.43, 抖音外卖: 12 }, 12],
+    [{ 抖音: 42.43, 抖音外卖: 0 }, 0],
+    [{ 抖音收入: 35.59 }, 0],
+    [{ 抖音: 2000.01 }, 2000.01],
+  ]) {
+    const data = { ...record, ...extra };
+    const daily = readDaily(rowsFor(data, Object.keys(data).reverse()));
+    assert.equal(daily[0].metrics.抖音外卖, expected);
+    const cashier = { ...daily[0], metrics: { ...daily[0].metrics, 抖音外卖: 999 } };
+    assert.equal(mergeStores([cashier], daily).merged[0].metrics.抖音外卖, expected);
+  }
+});
+
 test("daily amounts follow exact headers when columns move or Douyin is absent", () => {
   const normal = readDaily(rowsFor(record))[0];
   const reversed = readDaily(rowsFor(record, Object.keys(record).reverse()))[0];
