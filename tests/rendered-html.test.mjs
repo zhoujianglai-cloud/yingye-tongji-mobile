@@ -59,7 +59,7 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /"京东外卖",\s*"抖音外卖",\s*"美团团购"/);
   assert.match(source, /String\(cell \?\? ""\)\.trim\(\) === "抖音外卖"/);
   assert.match(source, /metrics\.抖音外卖 = hasDouyinDelivery \? toNum\(row\[27\]\) : 0/);
-  assert.match(source, /metrics\.抖音外卖 = toNum\(row\[28\]\)/);
+  assert.match(source, /metrics\.抖音外卖 = toNum\(cell\(row, "抖音外卖"\)\)/);
   assert.match(source, /if \(key === "抖音外卖"\) return;/);
   const abnormalThresholdBlock = source.match(/const abnormalThresholds = \{([\s\S]*?)\} as const;/)?.[1] ?? "";
   assert.match(abnormalThresholdBlock, /抖音外卖:\s*2000/);

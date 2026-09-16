@@ -176,28 +176,46 @@ function readDingding(rows: unknown[][]): Store[] {
 }
 
 function readDaily(rows: unknown[][]): Store[] {
+  // Export columns can move when a payment channel is added or removed.
+  // Exact names keep e.g. 美团 and 美团收入 from being confused.
+  const normalizeHeader = (value: unknown) => String(value ?? "").trim();
+  const headerRow = rows.findIndex((row) => row.some((cell) => normalizeHeader(cell) === "门店")
+    && row.some((cell) => normalizeHeader(cell) === "应收金额"));
+  if (headerRow < 0) throw new Error("日流水表缺少“门店”或“应收金额”表头，请选择原始日流水导出文件");
+  const columns = new Map<string, number>();
+  (rows[headerRow] ?? []).forEach((cell, index) => {
+    const name = normalizeHeader(cell);
+    if (!name) return;
+    if (columns.has(name)) throw new Error(`日流水表存在重复表头“${name}”，请检查文件`);
+    columns.set(name, index);
+  });
+  const cell = (row: unknown[], name: string) => {
+    const index = columns.get(name);
+    return index === undefined ? undefined : row[index];
+  };
   const stores: Store[] = [];
-  for (let r = 1; r < rows.length; r += 1) {
+  for (let r = headerRow + 1; r < rows.length; r += 1) {
     const row = rows[r] ?? [];
-    if (row.length < 5 || !String(row[3] ?? "").trim()) continue;
-    const region = String(row[1] ?? "").trim();
-    if (region === "停业门店" || region === "Test" || toNum(row[4]) === 0) continue;
+    const storeCell = cell(row, "门店");
+    if (!String(storeCell ?? "").trim()) continue;
+    const region = String(cell(row, "区域") ?? "").trim();
+    if (region === "停业门店" || region === "Test" || toNum(cell(row, "应收金额")) === 0) continue;
     const metrics = emptyMetrics();
-    metrics.现金 = toNum(row[18]);
-    metrics.微信 = toNum(row[21]);
-    metrics.支付宝 = toNum(row[23]);
-    metrics.美团外卖 = toNum(row[51]);
-    metrics.饿了么 = toNum(row[49]);
-    metrics.京东外卖 = toNum(row[55]);
-    metrics.抖音外卖 = toNum(row[28]);
-    metrics.美团团购 = toNum(row[37]);
-    metrics.抖音团购 = toNum(row[26]);
-    metrics.快手团购 = toNum(row[29]);
-    metrics.其它外卖 = toNum(row[36]);
+    metrics.现金 = toNum(cell(row, "现金"));
+    metrics.微信 = toNum(cell(row, "微信"));
+    metrics.支付宝 = toNum(cell(row, "支付宝"));
+    metrics.美团外卖 = toNum(cell(row, "美团"));
+    metrics.饿了么 = toNum(cell(row, "饿了么"));
+    metrics.京东外卖 = toNum(cell(row, "京东"));
+    metrics.抖音外卖 = toNum(cell(row, "抖音外卖"));
+    metrics.美团团购 = toNum(cell(row, "美团团购r"));
+    metrics.抖音团购 = toNum(cell(row, "抖音团购"));
+    metrics.快手团购 = toNum(cell(row, "快手团购"));
+    metrics.其它外卖 = toNum(cell(row, "本地外卖"));
     stores.push({
       region,
-      storeName: cleanStoreName(row[3]),
-      storeId: extractStoreId(row[3]),
+      storeName: cleanStoreName(storeCell),
+      storeId: extractStoreId(storeCell),
       source: "日流水",
       dateStr: "",
       metrics,
