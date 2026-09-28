@@ -858,8 +858,7 @@ export function RevenueTool() {
       const daily = readDaily(dailyRows);
       addLog(`      已识别 ${daily.length} 家门店`);
       addLog("[3/4] 正在匹配、去重和补充数据…");
-      const { merged, extras, changes, duplicateGroups } = mergeStores(dingding, daily);
-      changes.forEach((line) => addLog(`[金额调整] ${line}`));
+      const { merged, extras, duplicateGroups } = mergeStores(dingding, daily);
       if (duplicateGroups) addLog(`      钉钉发现 ${duplicateGroups} 组重复门店，已自动去重`);
       if (extras.length) addLog(`      ${extras.length} 家门店仅存在于钉钉，未写入统计表`);
       const abnormalStores = merged
