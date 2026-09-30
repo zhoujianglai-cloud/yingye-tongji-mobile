@@ -51,4 +51,18 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /其它外卖: 2000/);
   assert.match(source, /key === "其它外卖" && store\.storeName === "阳西溪头店"/);
   assert.match(source, /return 5000/);
+  assert.match(source, /function extractDateFromCashierFilename/);
+  assert.match(source, /readDingding\(await parseWorkbook\(file\)\)\.find/);
+  assert.match(source, /统计日期 <small>自动填写，可修改<\/small>/);
+  assert.match(source, /dateStr: formatSourceDate\(row\[4\]\)/);
+  assert.doesNotMatch(source, /dateStr: formatSourceDate\(row\[19\]\)/);
+  assert.match(source, /"京东外卖",\s*"抖音外卖",\s*"美团团购"/);
+  assert.match(source, /String\(cell \?\? ""\)\.trim\(\) === "抖音外卖"/);
+  assert.match(source, /metrics\.抖音外卖 = hasDouyinDelivery \? toNum\(row\[27\]\) : 0/);
+  assert.match(source, /columns\.has\("抖音外卖"\) \? "抖音外卖" : "抖音"/);
+  assert.match(source, /if \(key === "抖音外卖"\) return;/);
+  const abnormalThresholdBlock = source.match(/const abnormalThresholds = \{([\s\S]*?)\} as const;/)?.[1] ?? "";
+  assert.match(abnormalThresholdBlock, /抖音外卖:\s*2000/);
+  assert.match(source, /抖音外卖:\s*"抖音外卖"/);
+  assert.match(source, /const outputColumnCount = headers\.length/);
 });

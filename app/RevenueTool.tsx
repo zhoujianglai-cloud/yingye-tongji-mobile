@@ -1,10 +1,10 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 const metricKeys = [
-  "现金", "微信", "支付宝", "美团外卖", "饿了么", "京东外卖",
-  "美团团购", "抖音团购", "快手团购", "其它外卖", "其他收入",
+  "现金", "微信", "支付宝", "美团外卖", "淘宝闪购", "京东外卖",
+  "抖音外卖", "美团团购", "抖音团购", "快手团购", "其它外卖", "其他收入",
 ] as const;
 
 type MetricKey = (typeof metricKeys)[number];
@@ -25,8 +25,9 @@ type OutputMode = "excel" | "image" | "both";
 const abnormalThresholds = {
   营业额: 100000,
   美团外卖: 20000,
-  饿了么: 20000,
+  淘宝闪购: 20000,
   京东外卖: 5000,
+  抖音外卖: 2000,
   美团团购: 5000,
   抖音团购: 20000,
   快手团购: 5000,
@@ -48,8 +49,9 @@ type ImageResult = {
 const abnormalMetricLabels: Record<AbnormalMetric, string> = {
   营业额: "营业额",
   美团外卖: "美团外卖",
-  饿了么: "饿了么",
-  京东外卖: "京东",
+  淘宝闪购: "淘宝闪购",
+  京东外卖: "京东外卖",
+  抖音外卖: "抖音外卖",
   美团团购: "美团团购",
   抖音团购: "抖音团购",
   快手团购: "快手",
@@ -63,8 +65,8 @@ const regionOrder = [
 ];
 
 const emptyMetrics = (): Metrics => ({
-  现金: 0, 微信: 0, 支付宝: 0, 美团外卖: 0, 饿了么: 0, 京东外卖: 0,
-  美团团购: 0, 抖音团购: 0, 快手团购: 0, 其它外卖: 0, 其他收入: 0,
+  现金: 0, 微信: 0, 支付宝: 0, 美团外卖: 0, 淘宝闪购: 0, 京东外卖: 0,
+  抖音外卖: 0, 美团团购: 0, 抖音团购: 0, 快手团购: 0, 其它外卖: 0, 其他收入: 0,
 });
 
 const toNum = (value: unknown) => {
@@ -98,11 +100,40 @@ const formatSourceDate = (value: unknown) => {
     const day = String(value.getDate()).padStart(2, "0");
     return `${value.getFullYear()}-${month}-${day}`;
   }
-  return String(value ?? "").trim();
+  if (typeof value === "number" && value >= 20000 && value <= 80000) {
+    const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86400000);
+    if (!Number.isNaN(date.getTime())) {
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      return `${date.getUTCFullYear()}-${month}-${day}`;
+    }
+  }
+  const text = String(value ?? "").trim();
+  const fullDate = text.match(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+  if (fullDate) {
+    return `${fullDate[1]}-${String(Number(fullDate[2])).padStart(2, "0")}-${String(Number(fullDate[3])).padStart(2, "0")}`;
+  }
+  const monthDay = text.match(/(\d{1,2})月(\d{1,2})日?/);
+  if (monthDay) return `${Number(monthDay[1])}月${Number(monthDay[2])}日`;
+  return text;
 };
+
+function extractDateFromCashierFilename(filename: string) {
+  const separated = filename.match(/(20\d{2})[-_.年](\d{1,2})[-_.月](\d{1,2})/);
+  const compact = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+  const matched = separated ?? compact;
+  if (!matched) return "";
+  const year = Number(matched[1]);
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return "";
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
 
 function readDingding(rows: unknown[][]): Store[] {
   const stores: Store[] = [];
+  const hasDouyinDelivery = rows.slice(0, 2).some((row) => row.some((cell) => String(cell ?? "").trim() === "抖音外卖"));
+  const shiftedColumn = (legacyIndex: number) => legacyIndex + (hasDouyinDelivery ? 1 : 0);
   for (let r = 2; r < rows.length; r += 1) {
     const row = rows[r] ?? [];
     if (!String(row[0] ?? "").trim()) continue;
@@ -123,54 +154,101 @@ function readDingding(rows: unknown[][]): Store[] {
     metrics.微信 = toNum(row[22]);
     metrics.支付宝 = toNum(row[23]);
     metrics.美团外卖 = toNum(row[24]);
-    metrics.饿了么 = toNum(row[25]);
+    metrics.淘宝闪购 = toNum(row[25]);
     metrics.京东外卖 = toNum(row[26]);
-    metrics.美团团购 = toNum(row[27]);
-    metrics.抖音团购 = toNum(row[28]);
-    metrics.快手团购 = toNum(row[29]);
-    metrics.其它外卖 = toNum(row[32]) + toNum(row[35]) + toNum(row[38]);
-    metrics.其他收入 = toNum(row[41]) + toNum(row[44]) + toNum(row[47]) + toNum(row[50]);
+    metrics.抖音外卖 = hasDouyinDelivery ? toNum(row[27]) : 0;
+    metrics.美团团购 = toNum(row[shiftedColumn(27)]);
+    metrics.抖音团购 = toNum(row[shiftedColumn(28)]);
+    metrics.快手团购 = toNum(row[shiftedColumn(29)]);
+    metrics.其它外卖 = toNum(row[shiftedColumn(32)]) + toNum(row[shiftedColumn(35)]) + toNum(row[shiftedColumn(38)]);
+    metrics.其他收入 = toNum(row[shiftedColumn(41)]) + toNum(row[shiftedColumn(44)]) + toNum(row[shiftedColumn(47)]) + toNum(row[shiftedColumn(50)]);
     stores.push({
       region,
       storeName,
       storeId: extractStoreId(storeField),
       source: "钉钉",
-      dateStr: formatSourceDate(row[19]),
+      dateStr: formatSourceDate(row[4]),
       metrics,
       total: calcTotal(metrics),
     });
   }
+  if (!stores.length) throw new Error("收银记录表内容为空，或没有可识别的门店记录。请重新选择有数据的收银记录表；未生成任何结果。");
   return stores;
 }
 
+const dailyHeaderBaseline = ["序号", "区域", "门店ID", "门店", "应收金额", "实收金额", "手机实收", "收银实收", "交易单数", "均单消费", "桌台数", "桌单价", "人数", "客单价", "优惠金额", "储值金额", "退单数", "退单金额", "现金", "现金充值", "储值卡", "微信", "微信充值", "支付宝", "支付宝充值", "实体卡", "抖音团购", "抖音代金券", "快手团购", "快手代金券", "微信补", "支付宝补", "商家联盟(闽北)", "味觉平台(闽北)", "好口福(闽北)", "本地外卖", "美团团购r", "文轩餐饮(周宁)", "本地团购", "抖音团购r", "现金劵(佳惠)", "宁德膳圆(屏南)", "美团外卖r", "饿了么r", "快手团购r", "紫金外卖", "美团代金券r", "水益方餐卡(屏南店)", "淘宝闪购", "淘宝闪购收入", "美团外卖", "美团外卖收入", "抖音外卖", "抖音外卖收入", "京东外卖", "京东外卖收入", "免单单数", "免单金额", "自外卖营业额", "自外卖订单数"];
+
+function inspectDailyHeaders(rows: unknown[][]): string[] {
+  const actual = (rows[0] ?? []).map((value) => String(value ?? "").trim());
+  const missing = dailyHeaderBaseline.filter((name) => !actual.includes(name));
+  if (!missing.length) return [];
+  const added = actual.filter((name) => name && !dailyHeaderBaseline.includes(name));
+  return [
+    ...missing.map((name) => `第一行表头“${name}”已删除或改名，请核对。`),
+    ...(added.length ? [`同时发现新的名称：${added.join("、")}。不会自动猜测它们对应的金额列。`] : []),
+    "请确认表头变化不影响本次统计；未识别的金额列按 0 读取，并按既定规则匹配收银记录。若金额列改名，请取消并修正表头后再生成。",
+  ];
+}
+
 function readDaily(rows: unknown[][]): Store[] {
+  // Export columns can move when a payment channel is added or removed.
+  // Exact names keep e.g. 美团 and 美团收入 from being confused.
+  const normalizeHeader = (value: unknown) => String(value ?? "").trim();
+  const headerRow = rows.findIndex((row) => row.some((cell) => normalizeHeader(cell) === "门店")
+    && row.some((cell) => normalizeHeader(cell) === "应收金额"));
+  if (headerRow < 0) throw new Error("日流水表缺少“门店”或“应收金额”表头，请选择原始日流水导出文件");
+  const columns = new Map<string, number>();
+  (rows[headerRow] ?? []).forEach((cell, index) => {
+    const name = normalizeHeader(cell);
+    if (!name) return;
+    if (columns.has(name)) throw new Error(`日流水表存在重复表头“${name}”，请检查文件`);
+    columns.set(name, index);
+  });
+  const cell = (row: unknown[], name: string) => {
+    const index = columns.get(name);
+    return index === undefined ? undefined : row[index];
+  };
+  const channel = (label: string, names: string[]) => {
+    const found = names.filter((name) => columns.has(name));
+    if (found.length > 1) {
+      throw new Error(`日流水“${label}”同时存在多个表头：${found.join("、")}。请保留一个正确的金额列后重试，避免错取或重复统计。`);
+    }
+    return found[0] ?? names[0];
+  };
+  const meituanColumn = channel("美团外卖", ["美团", "美团外卖"]);
+  const elemeColumn = channel("淘宝闪购", ["饿了么", "淘宝闪购"]);
+  const jdColumn = channel("京东外卖", ["京东", "京东外卖"]);
   const stores: Store[] = [];
-  for (let r = 1; r < rows.length; r += 1) {
+  for (let r = headerRow + 1; r < rows.length; r += 1) {
     const row = rows[r] ?? [];
-    if (row.length < 5 || !String(row[3] ?? "").trim()) continue;
-    const region = String(row[1] ?? "").trim();
-    if (region === "停业门店" || region === "Test" || toNum(row[4]) === 0) continue;
+    const storeCell = cell(row, "门店");
+    if (!String(storeCell ?? "").trim()) continue;
+    const region = String(cell(row, "区域") ?? "").trim();
+    if (region === "停业门店" || region === "Test" || toNum(cell(row, "应收金额")) === 0) continue;
     const metrics = emptyMetrics();
-    metrics.现金 = toNum(row[18]);
-    metrics.微信 = toNum(row[21]);
-    metrics.支付宝 = toNum(row[23]);
-    metrics.美团外卖 = toNum(row[51]);
-    metrics.饿了么 = toNum(row[49]);
-    metrics.京东外卖 = toNum(row[55]);
-    metrics.美团团购 = toNum(row[37]);
-    metrics.抖音团购 = toNum(row[26]);
-    metrics.快手团购 = toNum(row[29]);
-    metrics.其它外卖 = toNum(row[36]);
+    metrics.现金 = toNum(cell(row, "现金"));
+    metrics.微信 = toNum(cell(row, "微信"));
+    metrics.支付宝 = toNum(cell(row, "支付宝"));
+    metrics.美团外卖 = toNum(cell(row, meituanColumn));
+    metrics.淘宝闪购 = toNum(cell(row, elemeColumn));
+    metrics.京东外卖 = toNum(cell(row, jdColumn));
+    // Match exact aliases, never 抖音收入. Prefer the explicit header even at zero.
+    metrics.抖音外卖 = toNum(cell(row, columns.has("抖音外卖") ? "抖音外卖" : "抖音"));
+    metrics.美团团购 = toNum(cell(row, "美团团购r"));
+    metrics.抖音团购 = toNum(cell(row, "抖音团购"));
+    metrics.快手团购 = toNum(cell(row, "快手团购"));
+    metrics.其它外卖 = toNum(cell(row, "本地外卖"));
     stores.push({
       region,
-      storeName: cleanStoreName(row[3]),
-      storeId: extractStoreId(row[3]),
+      storeName: cleanStoreName(storeCell),
+      storeId: extractStoreId(storeCell),
       source: "日流水",
       dateStr: "",
       metrics,
       total: calcTotal(metrics),
     });
   }
+  if (!stores.length) throw new Error("日流水表没有可统计的有效门店记录，请检查文件；未生成任何结果。");
   return stores;
 }
 
@@ -182,6 +260,7 @@ function findMatch(store: Store, byId: Map<string, Store>, byName: Map<string, S
 }
 
 function mergeStores(dingding: Store[], daily: Store[]) {
+  const changes: string[] = [];
   const dailyById = new Map<string, Store>();
   const dailyByName = new Map<string, Store>();
   daily.forEach((store) => {
@@ -226,11 +305,22 @@ function mergeStores(dingding: Store[], daily: Store[]) {
       return;
     }
     metricKeys.forEach((key) => {
+      if (key === "抖音外卖") return;
+      const before = matched.metrics[key];
+      if (key === "美团团购") {
+        const cashierAmount = store.metrics[key];
+        if (cashierAmount > 0 && matched.metrics[key] <= cashierAmount * 2) {
+          matched.metrics[key] = cashierAmount;
+          if (before !== cashierAmount) changes.push(`${matched.storeName} · ${key}：日流水 ${before} → ${cashierAmount}（采用收银金额，日流水不超过其 2 倍）`);
+        }
+        return;
+      }
       if (matched.metrics[key] === 0 && store.metrics[key] !== 0) matched.metrics[key] = store.metrics[key];
+      if (before !== matched.metrics[key]) changes.push(`${matched.storeName} · ${key}：日流水 ${before} → ${matched.metrics[key]}（收银记录补充）`);
     });
     matched.total = calcTotal(matched.metrics);
   });
-  return { merged, extras, duplicateGroups: [...groups.values()].filter((items) => items.length > 1).length };
+  return { merged, extras, changes, duplicateGroups: [...groups.values()].filter((items) => items.length > 1).length };
 }
 
 async function parseWorkbook(file: File) {
@@ -301,6 +391,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
   workbook.creator = "营业额统计网页版";
   const sheet = workbook.addWorksheet("营业额统计", { views: [{ showGridLines: false }] });
   const headers = ["选择区", "门店", "营业额", ...metricKeys];
+  const outputColumnCount = headers.length;
   const yellow = "FFFFFF00";
   const alertRed = "FFE53935";
   const black = "FF000000";
@@ -312,7 +403,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     right: { style: "medium" as const, color: { argb: white } },
   };
   const styleRow = (rowNumber: number, fill: string, bold = false) => {
-    for (let column = 1; column <= 14; column += 1) {
+    for (let column = 1; column <= outputColumnCount; column += 1) {
       const cell = sheet.getCell(rowNumber, column);
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill } };
       cell.font = { name: "微软雅黑", size: 12, bold, color: { argb: black } };
@@ -321,7 +412,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     }
   };
 
-  sheet.mergeCells("A1:N1");
+  sheet.mergeCells(1, 1, 1, outputColumnCount);
   sheet.getCell("A1").value = `${displayDate}营业额统计`;
   styleRow(1, yellow, true);
   sheet.getCell("A1").font = { name: "微软雅黑", size: 16, bold: true, color: { argb: black } };
@@ -341,7 +432,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     items.forEach((store) => {
       sheet.addRow([store.region, store.storeName, store.total, ...metricKeys.map((key) => store.metrics[key] || null)]);
       const baseFill = regionIndex % 2 === 0 ? "FFFCE4D6" : "FFE2F0D9";
-      for (let column = 1; column <= 14; column += 1) {
+      for (let column = 1; column <= outputColumnCount; column += 1) {
         const cell = sheet.getCell(currentRow, column);
         const abnormal = isAbnormalCell(store, column);
         const fill = abnormal ? alertRed : store.total < 2000 && column >= 2 ? yellow : baseFill;
@@ -359,7 +450,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
 
   const dataEnd = currentRow - 1;
   const totalRow = sheet.addRow([null, "合计"]);
-  for (let column = 3; column <= 14; column += 1) {
+  for (let column = 3; column <= outputColumnCount; column += 1) {
     const letter = sheet.getColumn(column).letter;
     totalRow.getCell(column).value = { formula: `SUM(${letter}3:${letter}${dataEnd})` };
     totalRow.getCell(column).numFmt = "0.00";
@@ -374,7 +465,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
     "制表数据来自收银记录与店长钉钉上报,仅供参考,实收数据请以财务报表为准！",
   ].forEach((note) => {
     sheet.addRow([note]);
-    sheet.mergeCells(currentRow, 1, currentRow, 14);
+    sheet.mergeCells(currentRow, 1, currentRow, outputColumnCount);
     styleRow(currentRow, yellow, true);
     sheet.getRow(currentRow).height = 25;
     currentRow += 1;
@@ -382,7 +473,7 @@ async function createOutput(stores: Store[], displayDate: string, filename: stri
 
   const totals = calculateTotals(stores);
   const columnTexts = getColumnTexts(stores, totals);
-  const minimumWidths = [8, 12, 12, 10, 12, 10, 12, 12, 12, 12, 12, 10, 12, 10];
+  const minimumWidths = [8, 12, 12, 10, 12, 10, 12, 12, 12, 12, 12, 12, 10, 12, 10];
   columnTexts.forEach((texts, index) => {
     const contentWidth = Math.max(...texts.map(excelTextUnits)) + 2;
     sheet.getColumn(index + 1).width = Math.max(minimumWidths[index], contentWidth);
@@ -515,7 +606,7 @@ async function createHighResImage(stores: Store[], displayDate: string) {
 
   // 先按最长内容测量列宽，再等比铺满固定宽度，所有列线都落在整数像素上。
   context.font = `700 ${bodyFontPx}px ${fontFamily}`;
-  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 112, 130, 112];
+  const minimumWidths = [88, 282, 146, 130, 146, 114, 130, 130, 130, 130, 130, 130, 112, 130, 112];
   const desiredWidths = columnTexts.map((texts, index) => {
     const measured = Math.max(...texts.map((text) => context.measureText(text).width));
     return Math.max(minimumWidths[index], Math.ceil(measured + 28));
@@ -697,10 +788,57 @@ export function RevenueTool() {
   const [working, setWorking] = useState(false);
   const [completed, setCompleted] = useState<{ stores: number; regions: number } | null>(null);
   const [imageResult, setImageResult] = useState<ImageResult | null>(null);
+  const cashierDateRequest = useRef(0);
+  const manualDateEdits = useRef(0);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const reviewResolver = useRef<((confirmed: boolean) => void) | null>(null);
+  const running = useRef(false);
+  const [review, setReview] = useState<{ title: string; lines: string[]; error: boolean } | null>(null);
+  useEffect(() => {
+    if (review) dialogRef.current?.showModal();
+  }, [review]);
+  const finishReview = (confirmed: boolean) => {
+    dialogRef.current?.close();
+    setReview(null);
+    reviewResolver.current?.(confirmed);
+    reviewResolver.current = null;
+  };
+  const requestReview = (title: string, lines: string[], error = false) => new Promise<boolean>((resolve) => {
+    reviewResolver.current = resolve;
+    setReview({ title, lines, error });
+  });
   const ready = useMemo(() => Boolean(dingdingFile && dailyFile && !working), [dingdingFile, dailyFile, working]);
 
+  const handleDingdingFileChange = (file: File | null) => {
+    const requestId = ++cashierDateRequest.current;
+    setDingdingFile(file);
+    if (!file) {
+      setDateText("");
+      return;
+    }
+
+    setDateText(extractDateFromCashierFilename(file.name));
+    const editVersion = manualDateEdits.current;
+    void (async () => {
+      try {
+        const cashierDate = readDingding(await parseWorkbook(file)).find((store) => store.dateStr)?.dateStr;
+        if (cashierDate && requestId === cashierDateRequest.current && editVersion === manualDateEdits.current) {
+          setDateText(cashierDate);
+        }
+      } catch {
+        // 文件名日期仍可作为默认值；正式生成时会显示完整的读取错误。
+      }
+    })();
+  };
+
+  const handleDateTextChange = (event: ChangeEvent<HTMLInputElement>) => {
+    manualDateEdits.current += 1;
+    setDateText(event.target.value);
+  };
+
   const run = async () => {
-    if (!dingdingFile || !dailyFile) return;
+    if (!dingdingFile || !dailyFile || running.current) return;
+    running.current = true;
     setWorking(true);
     setCompleted(null);
     if (imageResult) URL.revokeObjectURL(imageResult.url);
@@ -715,7 +853,9 @@ export function RevenueTool() {
       const dingding = readDingding(await parseWorkbook(dingdingFile));
       addLog(`      已识别 ${dingding.length} 家门店`);
       addLog("[2/4] 正在读取日流水…");
-      const daily = readDaily(await parseWorkbook(dailyFile));
+      const dailyRows = await parseWorkbook(dailyFile);
+      const reviewLines = inspectDailyHeaders(dailyRows);
+      const daily = readDaily(dailyRows);
       addLog(`      已识别 ${daily.length} 家门店`);
       addLog("[3/4] 正在匹配、去重和补充数据…");
       const { merged, extras, duplicateGroups } = mergeStores(dingding, daily);
@@ -732,6 +872,15 @@ export function RevenueTool() {
         });
       } else {
         addLog("      异常检查通过，未发现超阈值项目");
+      }
+      if (reviewLines.length) {
+        addLog("[待确认] 日流水第一行表头有名称变化或缺列，确认前不会生成或下载文件");
+        reviewLines.forEach((line) => addLog(line));
+        if (!await requestReview("日流水第一行表头有变化", reviewLines)) {
+          addLog("已取消：未生成图片或 Excel，请核对文件后重新处理。");
+          return;
+        }
+        addLog("已确认本次明细，继续生成；营业额按最终各项金额重算。");
       }
       const firstDate = dateText.trim() || dingding.find((store) => store.dateStr)?.dateStr || `${new Date().getMonth() + 1}月${new Date().getDate()}日`;
       const displayDate = displayDateFrom(firstDate);
@@ -758,8 +907,11 @@ export function RevenueTool() {
       addLog(`完成！共 ${merged.length} 家门店，${regionCount} 个区域`);
       setCompleted({ stores: merged.length, regions: regionCount });
     } catch (error) {
-      addLog(`处理失败：${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      addLog(`处理失败：${message}`);
+      await requestReview("无法生成统计结果", [message], true);
     } finally {
+      running.current = false;
       setWorking(false);
     }
   };
@@ -784,6 +936,17 @@ export function RevenueTool() {
 
   return (
     <main className="app-shell">
+      <dialog ref={dialogRef} className="review-dialog" aria-labelledby="review-title" onCancel={(event) => { event.preventDefault(); finishReview(false); }}>
+        {review && <>
+          <h2 id="review-title">{review.title}</h2>
+          <p>{review.error ? "请检查并重新选择文件。" : "与已确认的日流水表头相比，发现以下名称变化或缺列。请核对后决定是否继续生成。"}</p>
+          <div className="review-details"><ol>{review.lines.map((line, index) => <li key={index}>{line}</li>)}</ol></div>
+          <div className="review-actions">
+            <button type="button" autoFocus onClick={() => finishReview(false)}>{review.error ? "知道了" : "取消，返回检查"}</button>
+            {!review.error && <button type="button" onClick={() => finishReview(true)}>确认并生成</button>}
+          </div>
+        </>}
+      </dialog>
       <div className="ambient ambient-one" aria-hidden="true" />
       <div className="ambient ambient-two" aria-hidden="true" />
       <div className="ambient ambient-three" aria-hidden="true" />
@@ -813,14 +976,15 @@ export function RevenueTool() {
           <div><h2>选择数据文件</h2></div>
           <div className={`panel-status ${ready ? "ready" : ""}`}><i aria-hidden="true" />{ready ? "可以生成" : "等待文件"}</div>
         </div>
+        <fieldset disabled={working} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="file-grid">
-          <FilePicker label="钉钉记录" file={dingdingFile} onChange={setDingdingFile} />
+          <FilePicker label="钉钉记录" file={dingdingFile} onChange={handleDingdingFileChange} />
           <FilePicker label="日流水表" file={dailyFile} onChange={setDailyFile} />
         </div>
 
         <div className="date-field">
-          <label htmlFor="stat-date">统计日期 <small>选填</small></label>
-          <input id="stat-date" value={dateText} onChange={(event) => setDateText(event.target.value)} autoComplete="off" />
+          <label htmlFor="stat-date">统计日期 <small>自动填写，可修改</small></label>
+          <input id="stat-date" value={dateText} onChange={handleDateTextChange} autoComplete="off" />
         </div>
 
         <fieldset className="output-field">
@@ -838,6 +1002,8 @@ export function RevenueTool() {
               </label>
             ))}
           </div>
+        </fieldset>
+
         </fieldset>
 
         <button className="generate-button" disabled={!ready} onClick={run}>
