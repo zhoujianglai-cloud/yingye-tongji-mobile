@@ -663,3 +663,15 @@ footer > span {
     transition-duration: 0.01ms !important;
   }
 }
+/* Review is modal so no output can be generated before an explicit decision. */
+.review-dialog { border: 1px solid #b9d4cf; border-radius: 20px; padding: 24px; width: min(720px, calc(100vw - 32px)); max-height: 85dvh; color: #173c38; background: #fff; box-shadow: 0 24px 90px #163c3855; }
+.review-dialog::backdrop { background: #102e3866; }
+.review-dialog h2 { font-size: 22px; margin: 0 0 12px; }
+.review-dialog p { font-size: 16px; line-height: 1.6; }
+.review-details { max-height: 48dvh; overflow: auto; overflow-wrap: anywhere; margin: 16px 0; background: #f3f8f7; border-radius: 12px; padding: 8px 16px; }
+.review-details ol { padding-left: 24px; }
+.review-details li { font-size: 16px; line-height: 1.7; padding: 8px 0; border-bottom: 1px solid #dce9e6; }
+.review-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.review-actions button { padding: 12px 18px; border: 1px solid #c2d8d3; border-radius: 10px; font-size: 16px; background: #fff; color: #17483f; cursor: pointer; }
+.review-actions button + button { background: #0f766e; color: white; }
+.review-actions button:focus-visible { outline: 3px solid #18a795; outline-offset: 3px; }
