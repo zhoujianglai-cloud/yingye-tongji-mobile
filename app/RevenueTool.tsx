@@ -953,19 +953,11 @@ export function RevenueTool() {
 
       <header className="hero">
         <div className="hero-bar">
-          <div className="brand-lockup">
-            <span className="brand-icon" aria-hidden="true">营</span>
-            <span><strong>营业额统计</strong><small>移动端数据工作台</small></span>
-          </div>
           <div className="hero-signature" aria-label="X-ME 晴"><strong>X-ME</strong><span aria-hidden="true">|</span><strong>晴</strong></div>
-          <div className="privacy-pill"><span aria-hidden="true" />仅在当前设备处理</div>
         </div>
 
         <div className="hero-copy">
           <h1>两份流水 <span className="headline-divider" aria-hidden="true">|</span> <span className="headline-accent">一键合并</span></h1>
-          <div className="feature-pills" aria-label="工具特点">
-            <span>自动匹配</span><span>异常标红</span><span>高清导出</span>
-          </div>
         </div>
       </header>
 
@@ -983,7 +975,7 @@ export function RevenueTool() {
         </div>
 
         <div className="date-field">
-          <label htmlFor="stat-date">统计日期 <small>自动填写，可修改</small></label>
+          <label htmlFor="stat-date">统计日期</label>
           <input id="stat-date" value={dateText} onChange={handleDateTextChange} autoComplete="off" />
         </div>
 
@@ -1019,7 +1011,6 @@ export function RevenueTool() {
             <div className="image-result-heading"><div><strong>高清长图预览</strong><small>{imageResult.width} × {imageResult.height}{imageResult.dpi ? ` · ${imageResult.dpi} DPI` : " · iPhone 兼容尺寸"} · PNG</small></div><span>已生成</span></div>
             <div className="image-preview"><img src={imageResult.url} alt={`${dateText || "当日"}营业额统计高清长图`} /></div>
             <button type="button" className="save-image-button" onClick={saveImage}>保存高清图片</button>
-            <p>iPhone 请点击“保存高清图片”，在系统菜单选择“存储图像”，无需长按预览图。</p>
           </div>
         )}
 
@@ -1029,14 +1020,6 @@ export function RevenueTool() {
         </div>
       </section>
 
-      <section className="how-it-works">
-        <div className="section-heading"><p>工作流程</p><h2>简单三步，完成统计</h2></div>
-        <div className="flow">
-          <div><b>01</b><strong>选择文件</strong></div>
-          <div><b>02</b><strong>自动合并</strong></div>
-          <div><b>03</b><strong>下载结果</strong></div>
-        </div>
-      </section>
     </main>
   );
 }

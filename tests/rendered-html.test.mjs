@@ -46,14 +46,13 @@ test("keeps the iPhone image export within safe limits", async () => {
   assert.match(source, /if \(!appleMobile\)/);
   assert.match(source, /navigator\.canShare\?\.\(\{ files: \[file\] \}\)/);
   assert.match(source, /if \(!isAppleMobileDevice\(\)\) \{\s*downloadBlob\(imageResult\.blob, imageResult\.filename\);\s*return;/);
-  assert.match(source, /系统菜单选择“存储图像”/);
   assert.doesNotMatch(source, /长按上方图片/);
   assert.match(source, /其它外卖: 2000/);
   assert.match(source, /key === "其它外卖" && store\.storeName === "阳西溪头店"/);
   assert.match(source, /return 5000/);
   assert.match(source, /function extractDateFromCashierFilename/);
   assert.match(source, /readDingding\(await parseWorkbook\(file\)\)\.find/);
-  assert.match(source, /统计日期 <small>自动填写，可修改<\/small>/);
+  assert.match(source, /统计日期<\/label>/);
   assert.match(source, /dateStr: formatSourceDate\(row\[4\]\)/);
   assert.doesNotMatch(source, /dateStr: formatSourceDate\(row\[19\]\)/);
   assert.match(source, /"京东外卖",\s*"抖音外卖",\s*"美团团购"/);
