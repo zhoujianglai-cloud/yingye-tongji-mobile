@@ -16,17 +16,18 @@ test('80 percent inclusive passes; below 80 fails even with a small overall diff
  assert.equal(check(c,d).consistent,8);
  c[2].metrics.微信=980;rejected(()=>check(c,d),/不足 80%/);
 });
-test('single-store and overall 1 percent boundaries are strict; sub-cent precision retained',()=>{
+test('single-store 1 percent boundary is strict; sub-cent precision retained',()=>{
  rejected(()=>check([store(1,990)],[store(1,1000)]),/不足 80%/);
  assert.equal(check([store(1,990.001)],[store(1,1000)]).consistent,1);
  assert.equal(check([store(1,3161.529)],[store(1,3161.52)]).consistent,1);
  const d=batch(),c=batch();c[0].metrics.微信=900;
- rejected(()=>check(c,d),/整体绝对差额比例 1.00%/);
+ assert.equal(check(c,d).consistent,9);
  c[0].metrics.微信=900.001;assert.equal(check(c,d).consistent,9);
 });
-test('opposite differences cannot cancel; zero and missing/invalid values are handled',()=>{
- const d=batch(),c=batch();c[0].metrics.微信=900;c[1].metrics.微信=1100;
- rejected(()=>check(c,d),/整体/);
+test('large overall differences pass at 80 percent; zero and missing/invalid values are handled',()=>{
+ const d=batch(),c=batch();c[0].metrics.微信=0;c[1].metrics.微信=1000000;
+ assert.equal(check(c,d).consistent,8);
+ c[2].metrics.微信=0;rejected(()=>check(c,d),/不足 80%/);
  assert.equal(check([store(1,0)],[store(1,0)]).consistent,1);
  rejected(()=>check([store(1,0)],[store(1,1)]),/不足/);
  rejected(()=>check([{...store(1,0),wechatValid:false}],[store(1,0)]),/微信金额为空/);

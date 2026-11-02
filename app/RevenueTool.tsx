@@ -378,7 +378,6 @@ function validateSourceData(cashier: Store[], daily: Store[]) {
   const used = new Set<Store>();
   const details: string[] = [];
   let consistent = 0;
-  let sumDaily = 0n, sumCashier = 0n, sumDifference = 0n;
   const abs = (n: bigint) => n < 0n ? -n : n;
   const max = (a: bigint, b: bigint) => a > b ? a : b;
   // Millionths retain sub-cent values such as 3161.529 and make 1% boundaries exact.
@@ -397,17 +396,13 @@ function validateSourceData(cashier: Store[], daily: Store[]) {
       issues.push(`${store.storeName}：微信金额为空、无效或超出可校验范围`); return;
     }
     const x = units(a), y = units(b), difference = abs(x - y), denominator = max(abs(x), abs(y));
-    sumDaily += x; sumCashier += y; sumDifference += difference;
     if (denominator === 0n || difference * 100n < denominator) consistent++;
     else details.push(`${store.storeName}：日流水微信 ${a}，收银微信 ${b}，差异 ${(Number(difference) / Number(denominator) * 100).toFixed(2)}%`);
   });
   cash.filter((store) => !used.has(store) && store.metrics.微信 !== 0).forEach((store) => issues.push(`${store.storeName}：日流水缺少对应有效门店`));
   if (!day.length || consistent * 100 < day.length * 80) issues.push(`微信金额一致门店 ${consistent}/${day.length}，不足 80%`);
-  const denominator = max(abs(sumDaily), abs(sumCashier));
-  const overallRatio = denominator === 0n ? (sumDifference === 0n ? 0 : Infinity) : Number(sumDifference) / Number(denominator);
-  if (sumDifference > 0n && (denominator === 0n || sumDifference * 100n >= denominator)) issues.push(`微信整体绝对差额比例 ${(overallRatio * 100).toFixed(2)}%，须小于 1%`);
   if (issues.length) throw new DataValidationError([...new Set(issues), ...details]);
-  return { businessDate, consistent, total: day.length, overallRatio };
+  return { businessDate, consistent, total: day.length };
 }
 
 async function parseWorkbook(file: File) {
