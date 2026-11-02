@@ -16,6 +16,8 @@ type Store = {
   storeId: string | null;
   source: "钉钉" | "日流水";
   dateStr: string;
+  businessDates?: string[];
+  wechatValid?: boolean;
   metrics: Metrics;
   total: number;
 };
@@ -132,6 +134,7 @@ function extractDateFromCashierFilename(filename: string) {
 
 function readDingding(rows: unknown[][]): Store[] {
   const stores: Store[] = [];
+  const dateColumns = (rows[0] ?? []).flatMap((cell, index) => ["填写周期", "日期", "业务日期", "营业日期"].includes(String(cell ?? "").trim()) ? [index] : []);
   const hasDouyinDelivery = rows.slice(0, 2).some((row) => row.some((cell) => String(cell ?? "").trim() === "抖音外卖"));
   const shiftedColumn = (legacyIndex: number) => legacyIndex + (hasDouyinDelivery ? 1 : 0);
   for (let r = 2; r < rows.length; r += 1) {
@@ -168,6 +171,8 @@ function readDingding(rows: unknown[][]): Store[] {
       storeId: extractStoreId(storeField),
       source: "钉钉",
       dateStr: formatSourceDate(row[4]),
+      businessDates: dateColumns.filter((index) => String(row[index] ?? "").trim() && row[index] !== "-").map((index) => formatSourceDate(row[index])),
+      wechatValid: validWechatAmount(row[22]),
       metrics,
       total: calcTotal(metrics),
     });
@@ -244,6 +249,8 @@ function readDaily(rows: unknown[][]): Store[] {
       storeId: extractStoreId(storeCell),
       source: "日流水",
       dateStr: "",
+      businessDates: ["业务日期", "营业日期", "统计日期", "日期"].filter((name) => columns.has(name)).map((name) => formatSourceDate(cell(row, name))),
+      wechatValid: validWechatAmount(cell(row, "微信")),
       metrics,
       total: calcTotal(metrics),
     });
@@ -321,6 +328,86 @@ function mergeStores(dingding: Store[], daily: Store[]) {
     matched.total = calcTotal(matched.metrics);
   });
   return { merged, extras, changes, duplicateGroups: [...groups.values()].filter((items) => items.length > 1).length };
+}
+
+class DataValidationError extends Error {
+  details: string[];
+  constructor(details: string[]) { super("表格数据有问题 请检查"); this.details = details; }
+}
+
+function validWechatAmount(value: unknown) {
+  const text = String(value ?? "").trim().replace(/,/g, "");
+  return text !== "" && /^-?\d+(\.\d+)?$/.test(text) && Number.isFinite(Number(text));
+}
+
+function validateSourceData(cashier: Store[], daily: Store[]) {
+  const issues: string[] = [];
+  const dateSet = new Set<string>();
+  const validDate = (value: string) => {
+    if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false;
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+  };
+  cashier.forEach((store) => {
+    for (const date of [store.dateStr, ...(store.businessDates ?? [])]) {
+      if (!validDate(date)) issues.push(`${store.storeName}：收银记录业务日期缺失或无效`);
+      else dateSet.add(date);
+    }
+  });
+  if (dateSet.size !== 1) issues.push(`收银记录业务日期不唯一：${[...dateSet].join("、") || "未找到"}`);
+  const businessDate = [...dateSet][0];
+  daily.forEach((store) => (store.businessDates ?? []).forEach((date) => {
+    if (!validDate(date) || date !== businessDate) issues.push(`${store.storeName}：日流水业务日期 ${date || "缺失"} 与收银记录 ${businessDate || "未知"} 不一致`);
+  }));
+
+  // Validate the original amounts before deduplication, fallback filling or merging.
+  const group = (stores: Store[], label: string) => {
+    const result: Store[] = [];
+    const seen = new Map<string, Store>();
+    stores.forEach((store) => {
+      const key = normalizeId(store.storeId) ?? `name:${normalizeName(store.storeName)}`;
+      const previous = seen.get(key);
+      if (previous) {
+        if (previous.metrics.微信 !== store.metrics.微信 || previous.dateStr !== store.dateStr || store.wechatValid === false) issues.push(`${label} ${store.storeName}：重复记录的微信金额或日期冲突`);
+      } else { seen.set(key, store); result.push(store); }
+    });
+    return result;
+  };
+  const cash = group(cashier, "收银记录");
+  const day = group(daily, "日流水");
+  const used = new Set<Store>();
+  const details: string[] = [];
+  let consistent = 0;
+  let sumDaily = 0n, sumCashier = 0n, sumDifference = 0n;
+  const abs = (n: bigint) => n < 0n ? -n : n;
+  const max = (a: bigint, b: bigint) => a > b ? a : b;
+  // Millionths retain sub-cent values such as 3161.529 and make 1% boundaries exact.
+  const units = (amount: number) => BigInt(Math.round(amount * 1000000));
+  day.forEach((store) => {
+    const id = normalizeId(store.storeId);
+    const exact = id ? cash.filter((item) => normalizeId(item.storeId) === id) : [];
+    const matches = exact.length ? exact : cash.filter((item) => (!id || !item.storeId) && normalizeName(item.storeName) === normalizeName(store.storeName));
+    if (matches.length !== 1 || used.has(matches[0])) {
+      issues.push(`${store.storeName}：收银记录缺少对应门店或门店匹配不唯一`);
+      return;
+    }
+    const other = matches[0]; used.add(other);
+    const a = store.metrics.微信, b = other.metrics.微信;
+    if (store.wechatValid === false || other.wechatValid === false || !Number.isSafeInteger(Math.round(a * 1000000)) || !Number.isSafeInteger(Math.round(b * 1000000))) {
+      issues.push(`${store.storeName}：微信金额为空、无效或超出可校验范围`); return;
+    }
+    const x = units(a), y = units(b), difference = abs(x - y), denominator = max(abs(x), abs(y));
+    sumDaily += x; sumCashier += y; sumDifference += difference;
+    if (denominator === 0n || difference * 100n < denominator) consistent++;
+    else details.push(`${store.storeName}：日流水微信 ${a}，收银微信 ${b}，差异 ${(Number(difference) / Number(denominator) * 100).toFixed(2)}%`);
+  });
+  cash.filter((store) => !used.has(store) && store.metrics.微信 !== 0).forEach((store) => issues.push(`${store.storeName}：日流水缺少对应有效门店`));
+  if (!day.length || consistent * 100 < day.length * 80) issues.push(`微信金额一致门店 ${consistent}/${day.length}，不足 80%`);
+  const denominator = max(abs(sumDaily), abs(sumCashier));
+  const overallRatio = denominator === 0n ? (sumDifference === 0n ? 0 : Infinity) : Number(sumDifference) / Number(denominator);
+  if (sumDifference > 0n && (denominator === 0n || sumDifference * 100n >= denominator)) issues.push(`微信整体绝对差额比例 ${(overallRatio * 100).toFixed(2)}%，须小于 1%`);
+  if (issues.length) throw new DataValidationError([...new Set(issues), ...details]);
+  return { businessDate, consistent, total: day.length, overallRatio };
 }
 
 async function parseWorkbook(file: File) {
@@ -857,6 +944,7 @@ export function RevenueTool() {
       const reviewLines = inspectDailyHeaders(dailyRows);
       const daily = readDaily(dailyRows);
       addLog(`      已识别 ${daily.length} 家门店`);
+      validateSourceData(dingding, daily);
       addLog("[3/4] 正在匹配、去重和补充数据…");
       const { merged, extras, duplicateGroups } = mergeStores(dingding, daily);
       if (duplicateGroups) addLog(`      钉钉发现 ${duplicateGroups} 组重复门店，已自动去重`);
@@ -909,7 +997,12 @@ export function RevenueTool() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       addLog(`处理失败：${message}`);
-      await requestReview("无法生成统计结果", [message], true);
+      if (error instanceof DataValidationError) {
+        error.details.forEach((detail) => addLog(`[数据问题] ${detail}`));
+        await requestReview("表格数据有问题 请检查", error.details, true);
+      } else {
+        await requestReview("无法生成统计结果", [message], true);
+      }
     } finally {
       running.current = false;
       setWorking(false);
