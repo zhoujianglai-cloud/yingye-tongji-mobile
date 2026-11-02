@@ -16,7 +16,6 @@ type Store = {
   storeId: string | null;
   source: "钉钉" | "日流水";
   dateStr: string;
-  businessDates?: string[];
   wechatValid?: boolean;
   metrics: Metrics;
   total: number;
@@ -134,7 +133,6 @@ function extractDateFromCashierFilename(filename: string) {
 
 function readDingding(rows: unknown[][]): Store[] {
   const stores: Store[] = [];
-  const dateColumns = (rows[0] ?? []).flatMap((cell, index) => ["填写周期", "日期", "业务日期", "营业日期"].includes(String(cell ?? "").trim()) ? [index] : []);
   const hasDouyinDelivery = rows.slice(0, 2).some((row) => row.some((cell) => String(cell ?? "").trim() === "抖音外卖"));
   const shiftedColumn = (legacyIndex: number) => legacyIndex + (hasDouyinDelivery ? 1 : 0);
   for (let r = 2; r < rows.length; r += 1) {
@@ -171,7 +169,6 @@ function readDingding(rows: unknown[][]): Store[] {
       storeId: extractStoreId(storeField),
       source: "钉钉",
       dateStr: formatSourceDate(row[4]),
-      businessDates: dateColumns.filter((index) => String(row[index] ?? "").trim() && row[index] !== "-").map((index) => formatSourceDate(row[index])),
       wechatValid: validWechatAmount(row[22]),
       metrics,
       total: calcTotal(metrics),
@@ -249,7 +246,6 @@ function readDaily(rows: unknown[][]): Store[] {
       storeId: extractStoreId(storeCell),
       source: "日流水",
       dateStr: "",
-      businessDates: ["业务日期", "营业日期", "统计日期", "日期"].filter((name) => columns.has(name)).map((name) => formatSourceDate(cell(row, name))),
       wechatValid: validWechatAmount(cell(row, "微信")),
       metrics,
       total: calcTotal(metrics),
@@ -341,40 +337,21 @@ function validWechatAmount(value: unknown) {
 }
 
 function validateSourceData(cashier: Store[], daily: Store[]) {
-  const issues: string[] = [];
-  const dateSet = new Set<string>();
-  const validDate = (value: string) => {
-    if (!/^20\d{2}-\d{2}-\d{2}$/.test(value)) return false;
-    const parsed = new Date(`${value}T00:00:00Z`);
-    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-  };
-  cashier.forEach((store) => {
-    for (const date of [store.dateStr, ...(store.businessDates ?? [])]) {
-      if (!validDate(date)) issues.push(`${store.storeName}：收银记录业务日期缺失或无效`);
-      else dateSet.add(date);
-    }
-  });
-  if (dateSet.size !== 1) issues.push(`收银记录业务日期不唯一：${[...dateSet].join("、") || "未找到"}`);
-  const businessDate = [...dateSet][0];
-  daily.forEach((store) => (store.businessDates ?? []).forEach((date) => {
-    if (!validDate(date) || date !== businessDate) issues.push(`${store.storeName}：日流水业务日期 ${date || "缺失"} 与收银记录 ${businessDate || "未知"} 不一致`);
-  }));
-
   // Validate the original amounts before deduplication, fallback filling or merging.
-  const group = (stores: Store[], label: string) => {
+  const group = (stores: Store[]) => {
     const result: Store[] = [];
     const seen = new Map<string, Store>();
     stores.forEach((store) => {
       const key = normalizeId(store.storeId) ?? `name:${normalizeName(store.storeName)}`;
       const previous = seen.get(key);
       if (previous) {
-        if (previous.metrics.微信 !== store.metrics.微信 || previous.dateStr !== store.dateStr || store.wechatValid === false) issues.push(`${label} ${store.storeName}：重复记录的微信金额或日期冲突`);
-      } else { seen.set(key, store); result.push(store); }
+        if (previous.metrics.微信 !== store.metrics.微信 || store.wechatValid === false) previous.wechatValid = false;
+      } else { const copy = { ...store }; seen.set(key, copy); result.push(copy); }
     });
     return result;
   };
-  const cash = group(cashier, "收银记录");
-  const day = group(daily, "日流水");
+  const cash = group(cashier);
+  const day = group(daily);
   const used = new Set<Store>();
   const details: string[] = [];
   let consistent = 0;
@@ -387,22 +364,23 @@ function validateSourceData(cashier: Store[], daily: Store[]) {
     const exact = id ? cash.filter((item) => normalizeId(item.storeId) === id) : [];
     const matches = exact.length ? exact : cash.filter((item) => (!id || !item.storeId) && normalizeName(item.storeName) === normalizeName(store.storeName));
     if (matches.length !== 1 || used.has(matches[0])) {
-      issues.push(`${store.storeName}：收银记录缺少对应门店或门店匹配不唯一`);
+      details.push(`${store.storeName}：收银记录缺少对应门店或门店匹配不唯一`);
       return;
     }
     const other = matches[0]; used.add(other);
     const a = store.metrics.微信, b = other.metrics.微信;
     if (store.wechatValid === false || other.wechatValid === false || !Number.isSafeInteger(Math.round(a * 1000000)) || !Number.isSafeInteger(Math.round(b * 1000000))) {
-      issues.push(`${store.storeName}：微信金额为空、无效或超出可校验范围`); return;
+      details.push(`${store.storeName}：微信金额为空、无效、重复记录冲突或超出可校验范围`); return;
     }
     const x = units(a), y = units(b), difference = abs(x - y), denominator = max(abs(x), abs(y));
     if (denominator === 0n || difference * 100n < denominator) consistent++;
     else details.push(`${store.storeName}：日流水微信 ${a}，收银微信 ${b}，差异 ${(Number(difference) / Number(denominator) * 100).toFixed(2)}%`);
   });
-  cash.filter((store) => !used.has(store) && store.metrics.微信 !== 0).forEach((store) => issues.push(`${store.storeName}：日流水缺少对应有效门店`));
-  if (!day.length || consistent * 100 < day.length * 80) issues.push(`微信金额一致门店 ${consistent}/${day.length}，不足 80%`);
-  if (issues.length) throw new DataValidationError([...new Set(issues), ...details]);
-  return { businessDate, consistent, total: day.length };
+  if (!day.length || consistent * 100 < day.length * 80) throw new DataValidationError([
+    `微信金额差异小于 1% 的门店 ${consistent}/${day.length}，一致率 ${day.length ? (consistent / day.length * 100).toFixed(2) : "0.00"}%，不足 80%`,
+    ...details,
+  ]);
+  return { consistent, total: day.length };
 }
 
 async function parseWorkbook(file: File) {

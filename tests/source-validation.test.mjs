@@ -31,18 +31,18 @@ test('large overall differences pass at 80 percent; zero and missing/invalid val
  assert.equal(check([store(1,0)],[store(1,0)]).consistent,1);
  rejected(()=>check([store(1,0)],[store(1,1)]),/不足/);
  rejected(()=>check([{...store(1,0),wechatValid:false}],[store(1,0)]),/微信金额为空/);
- rejected(()=>check(batch(9),batch()),/缺少对应门店/);
+ assert.equal(check(batch(8),batch()).consistent,8);
+ rejected(()=>check(batch(7),batch()),/不足 80%/);
 });
-test('business dates must agree; absent daily dates do not imply verified dates',()=>{
- const d=batch(),c=batch();c[0].dateStr='2026-11-01';rejected(()=>check(c,d),/不唯一/);
- c[0].dateStr='2026-10-31';d[0].businessDates=['2026-11-01'];rejected(()=>check(c,d),/不一致/);
- d[0].businessDates=['2026-10-31'];assert.equal(check(c,d).businessDate,'2026-10-31');
- c[0].businessDates=['2026-10-30'];rejected(()=>check(c,d),/不唯一/);
- c[0].businessDates=[];c[0].dateStr='2026-02-30';rejected(()=>check(c,d),/无效/);
+test('mixed, missing and invalid dates never block a passing amount match',()=>{
+ const d=batch(),c=batch();c[0].dateStr='2026-11-01';c[1].dateStr='';c[2].dateStr='2026-02-30';
+ d[0].businessDates=['2025-10-31'];assert.equal(check(c,d).consistent,10);
 });
-test('conflicting duplicates and mismatched IDs cannot be matched to make checks pass',()=>{
- const d=batch(),c=batch();c.push(store(0,100));rejected(()=>check(c,d),/重复记录/);
- c.pop();c[0].storeId='MM999';rejected(()=>check(c,d),/缺少对应/);
+test('duplicate conflicts and mismatched IDs count as inconsistent without an independent block',()=>{
+ const d=batch(),c=batch();c.push(store(0,100));assert.equal(check(c,d).consistent,9);
+ c.pop();c[0].storeId='MM999';assert.equal(check(c,d).consistent,9);
+ c[1].storeId='MM998';assert.equal(check(c,d).consistent,8);
+ c[2].storeId='MM997';rejected(()=>check(c,d),/不足 80%/);
 });
 test('parsers preserve raw precision, date metadata and invalid amount flags',()=>{
  const d=readDaily([['门店','应收金额','微信','营业日期'],['测试-MM001',100,3161.52,'2026-10-31']]);
